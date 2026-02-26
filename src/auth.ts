@@ -91,6 +91,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async jwt({ token, user }) {
       if (user) {
+        // Initial sign-in: populate token from DB
         if (!user.email) {
           return token;
         }
@@ -99,6 +100,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         });
         if (dbUser) {
           token.userId = dbUser.id;
+          token.subscriptionTier = dbUser.subscriptionTier;
+        }
+      } else if (token.userId) {
+        // Token refresh: re-fetch subscriptionTier so upgrades/downgrades
+        // take effect without requiring the user to sign out and back in.
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.userId as string },
+          select: { subscriptionTier: true },
+        });
+        if (dbUser) {
           token.subscriptionTier = dbUser.subscriptionTier;
         }
       }

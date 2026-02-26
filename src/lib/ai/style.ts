@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
 const openai = new OpenAI({
@@ -80,7 +81,27 @@ export async function analyzeStyleFromContent(
     throw new Error("No style analysis content returned from AI");
   }
 
-  return JSON.parse(content) as StyleProfileData;
+  const raw = JSON.parse(content) as Record<string, unknown>;
+
+  const styleSchema = z.object({
+    tone: z.enum(["casual", "professional", "mixed"]),
+    formalityScore: z.number().min(1).max(10),
+    averageSentenceLength: z.number().min(0),
+    commonHooks: z.array(z.string().max(200)).max(20),
+    vocabularyPreferences: z.array(z.string().max(200)).max(50),
+    vocabularyAvoidances: z.array(z.string().max(200)).max(50),
+    emojiUsage: z.enum(["none", "minimal", "moderate", "heavy"]),
+    hashtagUsage: z.enum(["none", "minimal", "platform_specific"]),
+    signaturePatterns: z.array(z.string().max(500)).max(20),
+    platformDifferences: z.record(z.string(), z.record(z.string(), z.string().max(500))),
+  });
+
+  const result = styleSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(`Invalid style analysis format: ${result.error.issues[0].message}`);
+  }
+
+  return result.data as StyleProfileData;
 }
 
 export async function updateStyleProfile(userId: string): Promise<void> {
