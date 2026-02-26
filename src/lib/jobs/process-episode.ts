@@ -4,6 +4,7 @@ import { transcribeFromFileKey } from "@/lib/ai/transcribe";
 import { analyzeTranscription } from "@/lib/ai/analyze";
 import { generateContent } from "@/lib/ai/generate";
 import { updateStyleProfile } from "@/lib/ai/style";
+import { validateUploadedFileSize } from "@/lib/storage/s3";
 import type { EpisodeJobData } from "./queue";
 
 export async function processEpisode(
@@ -32,6 +33,9 @@ export async function processEpisode(
     if (!episode.fileKey) {
       throw new Error("Episode has no file key for transcription");
     }
+
+    // Verify the uploaded file doesn't exceed the size limit before processing
+    await validateUploadedFileSize(episode.fileKey);
 
     const transcriptionResult = await transcribeFromFileKey(episode.fileKey);
 

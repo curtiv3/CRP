@@ -42,7 +42,11 @@ export async function addEpisodeJob(
   userId: string,
 ): Promise<void> {
   const queue = getEpisodeQueue();
-  await queue.add("process-episode", { episodeId, userId });
+  // Use episodeId as jobId to prevent duplicate processing if the same
+  // episode is submitted twice (e.g., double-click, network retry).
+  await queue.add("process-episode", { episodeId, userId }, {
+    jobId: `process-${episodeId}`,
+  });
 }
 
 export function createEpisodeWorker(

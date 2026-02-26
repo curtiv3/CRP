@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const registerSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.string().email("Invalid email address").max(254, "Email is too long"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")

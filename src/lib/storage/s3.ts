@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
@@ -20,7 +21,7 @@ const s3Client = new S3Client({
 const BUCKET = process.env.S3_BUCKET ?? "contentrepurpose";
 
 /** Maximum upload file size: 500 MB */
-const MAX_UPLOAD_SIZE = 500 * 1024 * 1024;
+export const MAX_UPLOAD_SIZE = 500 * 1024 * 1024;
 
 const ALLOWED_TYPES: Record<string, string> = {
   "audio/mpeg": "mp3",
@@ -32,6 +33,16 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 export function isAllowedFileType(contentType: string): boolean {
   return contentType in ALLOWED_TYPES;
+}
+
+/**
+ * Validate that a file key follows the expected format and doesn't contain
+ * path traversal sequences. Defense-in-depth for all S3 operations.
+ */
+function assertValidFileKey(fileKey: string): void {
+  if (!fileKey.startsWith("uploads/") || fileKey.includes("..")) {
+    throw new Error("Invalid file key");
+  }
 }
 
 export async function createPresignedUploadUrl(
@@ -46,11 +57,13 @@ export async function createPresignedUploadUrl(
 
   const fileKey = `uploads/${userId}/${uuidv4()}.${ext}`;
 
+  // Note: ContentLength is intentionally omitted. Setting it on PutObjectCommand
+  // would require the upload to be *exactly* that size. Size enforcement is done
+  // via validateUploadedFileSize() after upload and on the client before upload.
   const command = new PutObjectCommand({
     Bucket: BUCKET,
     Key: fileKey,
     ContentType: contentType,
-    ContentLength: MAX_UPLOAD_SIZE,
   });
 
   const uploadUrl = await getSignedUrl(s3Client, command, {
@@ -61,7 +74,33 @@ export async function createPresignedUploadUrl(
   return { uploadUrl, fileKey, maxFileSize: MAX_UPLOAD_SIZE };
 }
 
+/**
+ * Verify that an uploaded file does not exceed the size limit.
+ * Call this after the client uploads and before processing.
+ */
+export async function validateUploadedFileSize(fileKey: string): Promise<void> {
+  assertValidFileKey(fileKey);
+
+  const command = new HeadObjectCommand({
+    Bucket: BUCKET,
+    Key: fileKey,
+  });
+
+  const head = await s3Client.send(command);
+  const size = head.ContentLength ?? 0;
+
+  if (size > MAX_UPLOAD_SIZE) {
+    // Delete the oversized file
+    await deleteFile(fileKey).catch(() => {});
+    throw new Error(
+      `Uploaded file is ${Math.round(size / 1024 / 1024)}MB, exceeding the ${Math.round(MAX_UPLOAD_SIZE / 1024 / 1024)}MB limit`,
+    );
+  }
+}
+
 export async function getFileStream(fileKey: string) {
+  assertValidFileKey(fileKey);
+
   const command = new GetObjectCommand({
     Bucket: BUCKET,
     Key: fileKey,
@@ -74,6 +113,8 @@ export async function getFileStream(fileKey: string) {
 export async function getPresignedDownloadUrl(
   fileKey: string,
 ): Promise<string> {
+  assertValidFileKey(fileKey);
+
   const command = new GetObjectCommand({
     Bucket: BUCKET,
     Key: fileKey,
@@ -83,6 +124,8 @@ export async function getPresignedDownloadUrl(
 }
 
 export async function deleteFile(fileKey: string): Promise<void> {
+  assertValidFileKey(fileKey);
+
   const command = new DeleteObjectCommand({
     Bucket: BUCKET,
     Key: fileKey,

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { z } from "zod";
 import type { AnalysisResult } from "./analyze";
 
 const openai = new OpenAI({
@@ -120,11 +121,32 @@ ${transcription.slice(0, 3000)}`;
     throw new Error("No generation content returned from AI");
   }
 
-  const parsed = JSON.parse(content) as { pieces: GeneratedPiece[] };
+  const raw = JSON.parse(content) as Record<string, unknown>;
 
-  if (!parsed.pieces || !Array.isArray(parsed.pieces)) {
+  if (!raw.pieces || !Array.isArray(raw.pieces)) {
     throw new Error("Invalid generation format: missing pieces array");
   }
 
-  return parsed.pieces;
+  // Validate each piece against the expected schema to catch AI hallucinations
+  const pieceSchema = z.object({
+    platform: z.enum(["TWITTER", "LINKEDIN", "INSTAGRAM", "NEWSLETTER", "BLOG", "TIKTOK"]),
+    type: z.enum(["THREAD", "POST", "CAPTION", "DRAFT", "TIMESTAMPS"]),
+    content: z.string().min(1).max(10000),
+    order: z.number().int().min(0),
+  });
+
+  const validPieces: GeneratedPiece[] = [];
+  for (const piece of raw.pieces) {
+    const result = pieceSchema.safeParse(piece);
+    if (result.success) {
+      validPieces.push(result.data);
+    }
+    // Silently skip malformed pieces rather than failing the entire generation
+  }
+
+  if (validPieces.length === 0) {
+    throw new Error("AI returned no valid content pieces");
+  }
+
+  return validPieces;
 }

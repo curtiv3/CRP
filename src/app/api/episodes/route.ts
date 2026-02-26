@@ -5,6 +5,9 @@ import { requireUserContext } from "@/lib/auth-context";
 import { addEpisodeJob } from "@/lib/jobs/queue";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 import { validateExternalUrl } from "@/lib/validate-url";
+// Note: the episode route uses the synchronous validateExternalUrl for fast
+// rejection of obviously bad URLs. The worker's transcribeFromUrl uses the
+// async validateResolvedUrl (with DNS check) right before the actual fetch.
 
 const createEpisodeSchema = z.object({
   title: z.string().min(1, "Title is required").max(500, "Title is too long"),

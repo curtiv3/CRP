@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { z } from "zod";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -67,11 +68,26 @@ export async function analyzeTranscription(
     throw new Error("No analysis content returned from AI");
   }
 
-  const parsed = JSON.parse(content) as AnalysisResult;
+  const raw = JSON.parse(content) as Record<string, unknown>;
 
-  if (!parsed.segments || !Array.isArray(parsed.segments)) {
-    throw new Error("Invalid analysis format: missing segments array");
+  // Validate the AI response against expected schema
+  const segmentSchema = z.object({
+    type: z.enum(["KEY_QUOTE", "STORY", "ARGUMENT", "HOOK", "TAKEAWAY"]),
+    content: z.string().min(1).max(5000),
+    timestamp: z.string().optional(),
+    context: z.string().max(1000).optional(),
+  });
+
+  const analysisSchema = z.object({
+    segments: z.array(segmentSchema).min(1),
+    summary: z.string().min(1).max(2000),
+    mainTopics: z.array(z.string().max(200)).min(1).max(10),
+  });
+
+  const result = analysisSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(`Invalid analysis format: ${result.error.issues[0].message}`);
   }
 
-  return parsed;
+  return result.data;
 }

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
 
 const updateContentSchema = z.object({
-  content: z.string().min(1, "Content is required").optional(),
+  content: z.string().min(1, "Content is required").max(10000, "Content is too long").optional(),
   status: z.enum(["GENERATED", "EDITED", "COPIED", "PUBLISHED"]).optional(),
 }).refine((data) => data.content !== undefined || data.status !== undefined, {
   message: "At least one of content or status is required",
