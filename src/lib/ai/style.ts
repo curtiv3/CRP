@@ -1,0 +1,161 @@
+import OpenAI from "openai";
+import { prisma } from "@/lib/prisma";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export interface StyleProfileData {
+  tone: string;
+  formalityScore: number;
+  averageSentenceLength: number;
+  commonHooks: string[];
+  vocabularyPreferences: string[];
+  vocabularyAvoidances: string[];
+  emojiUsage: string;
+  hashtagUsage: string;
+  signaturePatterns: string[];
+  platformDifferences: Record<string, Record<string, string>>;
+}
+
+const STYLE_ANALYSIS_PROMPT = `Analyze the following collection of edited social media posts by this creator. Identify their writing patterns.
+
+Return structured JSON with this exact structure:
+{
+  "tone": "casual" | "professional" | "mixed",
+  "formalityScore": 1-10,
+  "averageSentenceLength": number,
+  "commonHooks": ["question", "bold_claim", "story_opening", etc.],
+  "vocabularyPreferences": ["words or phrases they use often"],
+  "vocabularyAvoidances": ["words or phrases they never use or edited out"],
+  "emojiUsage": "none" | "minimal" | "moderate" | "heavy",
+  "hashtagUsage": "none" | "minimal" | "platform_specific",
+  "signaturePatterns": ["any recurring phrases, sign-offs, or structural patterns"],
+  "platformDifferences": {
+    "TWITTER": { "tone": "...", "style_notes": "..." },
+    "LINKEDIN": { "tone": "...", "style_notes": "..." }
+  }
+}
+
+Focus on patterns that distinguish this creator from generic AI output. Look for:
+- How they open posts (questions? bold claims? stories?)
+- Sentence rhythm (short and punchy? flowing and detailed?)
+- Vocabulary choices (formal vs casual, jargon, colloquialisms)
+- Structural preferences (line breaks, bullet points, paragraphs)
+- Platform-specific differences in how they write
+
+If there aren't enough samples to detect a clear pattern for a field, use reasonable defaults and note it in signaturePatterns.`;
+
+export async function analyzeStyleFromContent(
+  editedPieces: Array<{ platform: string; content: string }>,
+): Promise<StyleProfileData> {
+  const contentByPlatform = new Map<string, string[]>();
+  for (const piece of editedPieces) {
+    const existing = contentByPlatform.get(piece.platform) ?? [];
+    existing.push(piece.content);
+    contentByPlatform.set(piece.platform, existing);
+  }
+
+  let samplesText = "";
+  for (const [platform, contents] of contentByPlatform) {
+    samplesText += `\n\n=== ${platform} ===\n`;
+    samplesText += contents.map((c, i) => `--- Sample ${i + 1} ---\n${c}`).join("\n\n");
+  }
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: STYLE_ANALYSIS_PROMPT },
+      {
+        role: "user",
+        content: `Analyze these ${editedPieces.length} content pieces from this creator:\n${samplesText}`,
+      },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.3,
+  });
+
+  const content = response.choices[0].message.content;
+  if (!content) {
+    throw new Error("No style analysis content returned from AI");
+  }
+
+  return JSON.parse(content) as StyleProfileData;
+}
+
+export async function updateStyleProfile(userId: string): Promise<void> {
+  // Count completed episodes for this user
+  const completedCount = await prisma.episode.count({
+    where: { userId, status: "COMPLETE" },
+  });
+
+  if (completedCount < 3) {
+    return; // Not enough data yet
+  }
+
+  // Gather all content pieces (prefer edited ones, fall back to generated)
+  const pieces = await prisma.contentPiece.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+    take: 100, // Cap to avoid huge prompts
+    select: {
+      platform: true,
+      content: true,
+      status: true,
+    },
+  });
+
+  if (pieces.length < 5) {
+    return; // Not enough content pieces
+  }
+
+  // Prefer edited pieces but include generated if we need volume
+  const edited = pieces.filter((p) => p.status === "EDITED");
+  const samplePieces =
+    edited.length >= 5
+      ? edited.slice(0, 50)
+      : pieces.slice(0, 50);
+
+  const styleData = await analyzeStyleFromContent(
+    samplePieces.map((p) => ({ platform: p.platform, content: p.content })),
+  );
+
+  await prisma.styleProfile.upsert({
+    where: { userId },
+    create: {
+      userId,
+      tone: styleData.tone,
+      vocabulary: {
+        preferences: styleData.vocabularyPreferences,
+        avoidances: styleData.vocabularyAvoidances,
+        emojiUsage: styleData.emojiUsage,
+        hashtagUsage: styleData.hashtagUsage,
+      },
+      hookPatterns: styleData.commonHooks,
+      platformPreferences: {
+        formalityScore: styleData.formalityScore,
+        averageSentenceLength: styleData.averageSentenceLength,
+        signaturePatterns: styleData.signaturePatterns,
+        platformDifferences: styleData.platformDifferences,
+      },
+      sampleCount: completedCount,
+    },
+    update: {
+      tone: styleData.tone,
+      vocabulary: {
+        preferences: styleData.vocabularyPreferences,
+        avoidances: styleData.vocabularyAvoidances,
+        emojiUsage: styleData.emojiUsage,
+        hashtagUsage: styleData.hashtagUsage,
+      },
+      hookPatterns: styleData.commonHooks,
+      platformPreferences: {
+        formalityScore: styleData.formalityScore,
+        averageSentenceLength: styleData.averageSentenceLength,
+        signaturePatterns: styleData.signaturePatterns,
+        platformDifferences: styleData.platformDifferences,
+      },
+      sampleCount: completedCount,
+    },
+  });
+}

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { transcribeFromFileKey } from "@/lib/ai/transcribe";
 import { analyzeTranscription } from "@/lib/ai/analyze";
 import { generateContent } from "@/lib/ai/generate";
+import { updateStyleProfile } from "@/lib/ai/style";
 import type { EpisodeJobData } from "./queue";
 
 export async function processEpisode(
@@ -96,6 +97,15 @@ export async function processEpisode(
         processedAt: new Date(),
       },
     });
+
+    await job.updateProgress(95);
+
+    // Step 5: Update style profile (non-blocking — don't fail the job)
+    try {
+      await updateStyleProfile(userId);
+    } catch {
+      // Style profile update is best-effort; don't fail the episode
+    }
 
     await job.updateProgress(100);
   } catch (error) {

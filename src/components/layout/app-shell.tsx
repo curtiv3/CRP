@@ -18,6 +18,7 @@ export function AppShell({ user, children }: AppShellProps) {
   const navItems = [
     { href: "/dashboard", label: "Episodes" },
     { href: "/dashboard/episodes/new", label: "Upload" },
+    { href: "/dashboard/style", label: "Style" },
   ];
 
   return (
