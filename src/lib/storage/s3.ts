@@ -1,0 +1,87 @@
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { v4 as uuidv4 } from "uuid";
+
+const s3Client = new S3Client({
+  region: process.env.S3_REGION ?? "us-east-1",
+  endpoint: process.env.S3_ENDPOINT,
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+const BUCKET = process.env.S3_BUCKET ?? "contentrepurpose";
+
+const ALLOWED_TYPES: Record<string, string> = {
+  "audio/mpeg": "mp3",
+  "audio/wav": "wav",
+  "audio/x-m4a": "m4a",
+  "audio/mp4": "m4a",
+  "video/mp4": "mp4",
+};
+
+export function isAllowedFileType(contentType: string): boolean {
+  return contentType in ALLOWED_TYPES;
+}
+
+export async function createPresignedUploadUrl(
+  userId: string,
+  fileName: string,
+  contentType: string,
+): Promise<{ uploadUrl: string; fileKey: string }> {
+  const ext = ALLOWED_TYPES[contentType];
+  if (!ext) {
+    throw new Error(`Unsupported file type: ${contentType}`);
+  }
+
+  const fileKey = `uploads/${userId}/${uuidv4()}.${ext}`;
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: fileKey,
+    ContentType: contentType,
+  });
+
+  const uploadUrl = await getSignedUrl(s3Client, command, {
+    expiresIn: 3600,
+  });
+
+  return { uploadUrl, fileKey };
+}
+
+export async function getFileStream(fileKey: string) {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: fileKey,
+  });
+
+  const response = await s3Client.send(command);
+  return response.Body;
+}
+
+export async function getPresignedDownloadUrl(
+  fileKey: string,
+): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: fileKey,
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+}
+
+export async function deleteFile(fileKey: string): Promise<void> {
+  const command = new DeleteObjectCommand({
+    Bucket: BUCKET,
+    Key: fileKey,
+  });
+
+  await s3Client.send(command);
+}
