@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ContentStatus } from "./content-actions";
 import { TwitterCard } from "./twitter-card";
 import { LinkedInCard } from "./linkedin-card";
 import { InstagramCard } from "./instagram-card";
@@ -13,6 +14,7 @@ interface ContentPiece {
   platform: string;
   type: string;
   content: string;
+  status: string;
   order: number;
 }
 
@@ -53,7 +55,7 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
 
   const handleEdit = async (id: string, newContent: string) => {
     setPieces((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, content: newContent } : p)),
+      prev.map((p) => (p.id === id ? { ...p, content: newContent, status: "EDITED" } : p)),
     );
 
     try {
@@ -63,10 +65,27 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
         body: JSON.stringify({ content: newContent }),
       });
     } catch {
-      // Revert on failure
       setPieces(initialPieces);
     }
   };
+
+  const handleStatusChange = async (id: string, status: ContentStatus) => {
+    setPieces((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, status } : p)),
+    );
+
+    try {
+      await fetch(`/api/content/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      setPieces(initialPieces);
+    }
+  };
+
+  const publishedCount = pieces.filter((p) => p.status === "PUBLISHED").length;
 
   return (
     <div>
@@ -103,6 +122,11 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
             </button>
           );
         })}
+        {publishedCount > 0 && (
+          <span className="ml-auto shrink-0 text-xs font-mono text-success">
+            {publishedCount} published
+          </span>
+        )}
       </div>
 
       <div className="space-y-8">
@@ -144,10 +168,12 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                               key={piece.id}
                               id={piece.id}
                               content={piece.content}
+                              status={piece.status as ContentStatus}
                               type="THREAD"
                               order={piece.order}
                               threadLength={threads.length}
                               onEdit={handleEdit}
+                              onStatusChange={handleStatusChange}
                             />
                           ))}
                         </div>
@@ -164,9 +190,11 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                               key={piece.id}
                               id={piece.id}
                               content={piece.content}
+                              status={piece.status as ContentStatus}
                               type="POST"
                               order={piece.order}
                               onEdit={handleEdit}
+                              onStatusChange={handleStatusChange}
                             />
                           ))}
                         </div>
@@ -181,8 +209,10 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                       key={piece.id}
                       id={piece.id}
                       content={piece.content}
+                      status={piece.status as ContentStatus}
                       order={piece.order}
                       onEdit={handleEdit}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
 
@@ -192,8 +222,10 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                       key={piece.id}
                       id={piece.id}
                       content={piece.content}
+                      status={piece.status as ContentStatus}
                       order={piece.order}
                       onEdit={handleEdit}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
 
@@ -203,7 +235,9 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                       key={piece.id}
                       id={piece.id}
                       content={piece.content}
+                      status={piece.status as ContentStatus}
                       onEdit={handleEdit}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
 
@@ -213,7 +247,9 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                       key={piece.id}
                       id={piece.id}
                       content={piece.content}
+                      status={piece.status as ContentStatus}
                       onEdit={handleEdit}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
 
@@ -223,12 +259,14 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                       key={piece.id}
                       id={piece.id}
                       content={piece.content}
+                      status={piece.status as ContentStatus}
                       order={piece.order}
                       onEdit={handleEdit}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
 
-                {/* Fallback for any unmatched types on non-twitter platforms */}
+                {/* Fallback for any unmatched platforms */}
                 {platform !== "TWITTER" &&
                   platform !== "LINKEDIN" &&
                   platform !== "INSTAGRAM" &&
@@ -240,7 +278,9 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
                       key={piece.id}
                       id={piece.id}
                       content={piece.content}
+                      status={piece.status as ContentStatus}
                       onEdit={handleEdit}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
               </div>
@@ -255,11 +295,15 @@ export function ContentDisplay({ pieces: initialPieces }: ContentDisplayProps) {
 function GenericCard({
   id,
   content,
+  status,
   onEdit,
+  onStatusChange,
 }: {
   id: string;
   content: string;
+  status: ContentStatus;
   onEdit: (id: string, content: string) => void;
+  onStatusChange: (id: string, status: ContentStatus) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
@@ -302,16 +346,21 @@ function GenericCard({
           <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
             {content}
           </p>
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <button
-              onClick={() => setEditing(true)}
-              className="px-2 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
-            >
-              Edit
-            </button>
+          <div className="mt-3">
+            <ContentActions
+              id={id}
+              content={content}
+              status={status}
+              editing={editing}
+              onEdit={() => setEditing(true)}
+              onStatusChange={onStatusChange}
+            />
           </div>
         </div>
       )}
     </div>
   );
 }
+
+// Re-export for use in generic card
+import { ContentActions } from "./content-actions";

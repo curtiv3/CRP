@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
 import { EpisodeStatus } from "@/components/episodes/episode-status";
 import { ContentDisplay } from "@/components/content/content-display";
+import { DownloadButton } from "@/components/content/download-button";
 
 export async function generateMetadata({
   params,
@@ -120,15 +121,19 @@ export default async function EpisodeDetailPage({
 
       {episode.contentPieces.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-medium text-text-primary mb-4">
-            Generated Content
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-medium text-text-primary">
+              Generated Content
+            </h2>
+            <DownloadButton episodeId={episode.id} episodeTitle={episode.title} />
+          </div>
           <ContentDisplay
             pieces={episode.contentPieces.map((p) => ({
               id: p.id,
               platform: p.platform,
               type: p.type,
               content: p.content,
+              status: p.status,
               order: p.order,
             }))}
           />

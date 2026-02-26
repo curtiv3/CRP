@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { ContentActions, type ContentStatus } from "./content-actions";
 
 interface LinkedInCardProps {
   id: string;
   content: string;
+  status: ContentStatus;
   order: number;
   onEdit: (id: string, content: string) => void;
+  onStatusChange: (id: string, status: ContentStatus) => void;
 }
 
-export function LinkedInCard({ id, content, order, onEdit }: LinkedInCardProps) {
+export function LinkedInCard({ id, content, status, order, onEdit, onStatusChange }: LinkedInCardProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
   const wordCount = editValue.split(/\s+/).filter(Boolean).length;
@@ -76,15 +79,16 @@ export function LinkedInCard({ id, content, order, onEdit }: LinkedInCardProps) 
               <span className="text-xs text-text-muted font-mono">
                 {content.split(/\s+/).filter(Boolean).length} words
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEditing(true)}
-                  className="px-2 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  Edit
-                </button>
-                <CopyButton text={content} />
-              </div>
+            </div>
+            <div className="mt-2">
+              <ContentActions
+                id={id}
+                content={content}
+                status={status}
+                editing={editing}
+                onEdit={() => setEditing(true)}
+                onStatusChange={onStatusChange}
+              />
             </div>
           </div>
         )}
@@ -97,24 +101,5 @@ export function LinkedInCard({ id, content, order, onEdit }: LinkedInCardProps) 
         <span>Send</span>
       </div>
     </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="rounded-md bg-bg-elevated px-2 py-1 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
   );
 }

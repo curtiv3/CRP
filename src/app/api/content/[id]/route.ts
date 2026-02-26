@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
 
 const updateContentSchema = z.object({
-  content: z.string().min(1, "Content is required"),
+  content: z.string().min(1, "Content is required").optional(),
+  status: z.enum(["GENERATED", "EDITED", "COPIED", "PUBLISHED"]).optional(),
+}).refine((data) => data.content !== undefined || data.status !== undefined, {
+  message: "At least one of content or status is required",
 });
 
 export async function PATCH(
@@ -36,12 +39,21 @@ export async function PATCH(
       );
     }
 
+    const updateData: Record<string, string> = {};
+    if (parsed.data.content !== undefined) {
+      updateData.content = parsed.data.content;
+      // Set to EDITED when content changes (unless explicitly set)
+      if (parsed.data.status === undefined) {
+        updateData.status = "EDITED";
+      }
+    }
+    if (parsed.data.status !== undefined) {
+      updateData.status = parsed.data.status;
+    }
+
     const updated = await prisma.contentPiece.update({
       where: { id },
-      data: {
-        content: parsed.data.content,
-        status: "EDITED",
-      },
+      data: updateData,
     });
 
     return NextResponse.json(updated);

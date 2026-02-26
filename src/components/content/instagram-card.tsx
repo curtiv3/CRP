@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { ContentActions, type ContentStatus } from "./content-actions";
 
 interface InstagramCardProps {
   id: string;
   content: string;
+  status: ContentStatus;
   order: number;
   onEdit: (id: string, content: string) => void;
+  onStatusChange: (id: string, status: ContentStatus) => void;
 }
 
-export function InstagramCard({ id, content, order, onEdit }: InstagramCardProps) {
+export function InstagramCard({ id, content, status, order, onEdit, onStatusChange }: InstagramCardProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
 
@@ -64,37 +67,19 @@ export function InstagramCard({ id, content, order, onEdit }: InstagramCardProps
             <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
               {content}
             </p>
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setEditing(true)}
-                className="px-2 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
-              >
-                Edit
-              </button>
-              <CopyButton text={content} />
+            <div className="mt-3">
+              <ContentActions
+                id={id}
+                content={content}
+                status={status}
+                editing={editing}
+                onEdit={() => setEditing(true)}
+                onStatusChange={onStatusChange}
+              />
             </div>
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="rounded-md bg-bg-elevated px-2 py-1 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
   );
 }
