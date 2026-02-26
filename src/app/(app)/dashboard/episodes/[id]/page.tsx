@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
 import { EpisodeStatus } from "@/components/episodes/episode-status";
+import { ContentDisplay } from "@/components/content/content-display";
 
 export async function generateMetadata({
   params,
@@ -49,6 +50,9 @@ export default async function EpisodeDetailPage({
     episode.status === "ANALYZING" ||
     episode.status === "GENERATING";
 
+  const pieceCount = episode.contentPieces.length;
+  const platformCount = new Set(episode.contentPieces.map((p) => p.platform)).size;
+
   return (
     <div>
       <div className="mb-6">
@@ -87,6 +91,12 @@ export default async function EpisodeDetailPage({
                 year: "numeric",
               })}
             </span>
+            {pieceCount > 0 && (
+              <span className="font-mono">
+                {pieceCount} pieces across {platformCount} platform
+                {platformCount !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -108,47 +118,36 @@ export default async function EpisodeDetailPage({
         </div>
       )}
 
-      {episode.transcription && (
-        <div className="rounded-lg border border-border bg-bg-surface p-6 mb-6">
-          <h2 className="text-lg font-medium text-text-primary mb-3">
-            Transcription
-          </h2>
-          <div className="max-h-96 overflow-y-auto">
-            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
-              {episode.transcription}
-            </p>
-          </div>
-        </div>
-      )}
-
       {episode.contentPieces.length > 0 && (
-        <div>
+        <div className="mb-8">
           <h2 className="text-lg font-medium text-text-primary mb-4">
             Generated Content
           </h2>
-          <div className="space-y-4">
-            {episode.contentPieces.map((piece) => (
-              <div
-                key={piece.id}
-                className="rounded-lg border border-border bg-bg-surface p-4"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-text-secondary uppercase">
-                    {piece.platform} — {piece.type}
-                  </span>
-                  {piece.order > 0 && (
-                    <span className="text-xs text-text-muted font-mono">
-                      #{piece.order}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-text-primary whitespace-pre-wrap">
-                  {piece.content}
-                </p>
-              </div>
-            ))}
-          </div>
+          <ContentDisplay
+            pieces={episode.contentPieces.map((p) => ({
+              id: p.id,
+              platform: p.platform,
+              type: p.type,
+              content: p.content,
+              order: p.order,
+            }))}
+          />
         </div>
+      )}
+
+      {episode.transcription && (
+        <details className="rounded-lg border border-border bg-bg-surface mb-6">
+          <summary className="cursor-pointer px-6 py-4 text-sm font-medium text-text-primary hover:bg-bg-elevated transition-colors">
+            View Transcription
+          </summary>
+          <div className="px-6 pb-4">
+            <div className="max-h-96 overflow-y-auto">
+              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
+                {episode.transcription}
+              </p>
+            </div>
+          </div>
+        </details>
       )}
     </div>
   );

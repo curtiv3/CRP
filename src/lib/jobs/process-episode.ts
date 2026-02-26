@@ -1,12 +1,14 @@
 import type { Job } from "bullmq";
 import { prisma } from "@/lib/prisma";
 import { transcribeFromFileKey } from "@/lib/ai/transcribe";
+import { analyzeTranscription } from "@/lib/ai/analyze";
+import { generateContent } from "@/lib/ai/generate";
 import type { EpisodeJobData } from "./queue";
 
 export async function processEpisode(
   job: Job<EpisodeJobData>,
 ): Promise<void> {
-  const { episodeId } = job.data;
+  const { episodeId, userId } = job.data;
 
   const episode = await prisma.episode.findUnique({
     where: { id: episodeId },
@@ -23,22 +25,73 @@ export async function processEpisode(
       data: { status: "TRANSCRIBING" },
     });
 
-    await job.updateProgress(10);
+    await job.updateProgress(5);
 
     if (!episode.fileKey) {
       throw new Error("Episode has no file key for transcription");
     }
 
-    const result = await transcribeFromFileKey(episode.fileKey);
+    const transcriptionResult = await transcribeFromFileKey(episode.fileKey);
 
-    await job.updateProgress(60);
-
-    // Store transcription and mark analyzing (future step)
     await prisma.episode.update({
       where: { id: episodeId },
       data: {
-        transcription: result.text,
-        duration: result.duration,
+        transcription: transcriptionResult.text,
+        duration: transcriptionResult.duration,
+      },
+    });
+
+    await job.updateProgress(30);
+
+    // Step 2: Analysis
+    await prisma.episode.update({
+      where: { id: episodeId },
+      data: { status: "ANALYZING" },
+    });
+
+    const analysis = await analyzeTranscription(
+      transcriptionResult.text,
+      episode.title,
+    );
+
+    await job.updateProgress(55);
+
+    // Step 3: Content Generation
+    await prisma.episode.update({
+      where: { id: episodeId },
+      data: { status: "GENERATING" },
+    });
+
+    const styleProfile = await prisma.styleProfile.findUnique({
+      where: { userId },
+    });
+
+    const pieces = await generateContent(
+      analysis,
+      episode.title,
+      transcriptionResult.text,
+      styleProfile,
+    );
+
+    await job.updateProgress(85);
+
+    // Step 4: Store content pieces
+    if (pieces.length > 0) {
+      await prisma.contentPiece.createMany({
+        data: pieces.map((piece) => ({
+          episodeId,
+          userId,
+          platform: piece.platform,
+          type: piece.type,
+          content: piece.content,
+          order: piece.order,
+        })),
+      });
+    }
+
+    await prisma.episode.update({
+      where: { id: episodeId },
+      data: {
         status: "COMPLETE",
         processedAt: new Date(),
       },
