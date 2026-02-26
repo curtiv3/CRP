@@ -2,15 +2,31 @@ import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  name: z.string().min(1, "Name is required"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[a-z]/, "Password must contain a lowercase letter")
+    .regex(/[A-Z]/, "Password must contain an uppercase letter")
+    .regex(/[0-9]/, "Password must contain a number"),
+  name: z.string().min(1, "Name is required").max(100, "Name is too long"),
 });
 
 export async function POST(request: Request) {
   try {
+    // Rate limit: 5 registrations per hour per IP
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const rl = checkRateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many registration attempts. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
+
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);
 
@@ -28,21 +44,22 @@ export async function POST(request: Request) {
     });
 
     if (existingUser) {
+      // Return same shape as success to prevent user enumeration
       return NextResponse.json(
-        { error: "An account with this email already exists" },
-        { status: 409 },
+        { message: "If this email is available, a confirmation has been sent." },
+        { status: 200 },
       );
     }
 
     const passwordHash = await hash(password, 12);
 
-    const user = await prisma.user.create({
+    await prisma.user.create({
       data: { email, name, passwordHash },
     });
 
     return NextResponse.json(
-      { id: user.id, email: user.email, name: user.name },
-      { status: 201 },
+      { message: "If this email is available, a confirmation has been sent." },
+      { status: 200 },
     );
   } catch {
     return NextResponse.json(

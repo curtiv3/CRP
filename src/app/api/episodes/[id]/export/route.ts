@@ -106,12 +106,17 @@ export async function GET(
 
     const body = sections.join(separator);
     const ext = format;
-    const filename = `${episode.title.replace(/[^a-zA-Z0-9-_ ]/g, "").trim().replace(/\s+/g, "-")}.${ext}`;
+    // Sanitize filename: strip non-ASCII and special chars, truncate to prevent header injection
+    const safeFilename = episode.title
+      .replace(/[^a-zA-Z0-9-_ ]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .slice(0, 100) || "export";
 
     return new NextResponse(body, {
       headers: {
         "Content-Type": isMd ? "text/markdown; charset=utf-8" : "text/plain; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="${safeFilename}.${ext}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}.${ext}`,
       },
     });
   } catch (error) {

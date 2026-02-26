@@ -25,12 +25,14 @@ export default function RegisterPage() {
         body: JSON.stringify({ name, email, password }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const data = await res.json();
         setError(data.error ?? "Registration failed");
         return;
       }
 
+      // Attempt sign-in after registration
       const result = await signIn("credentials", {
         email,
         password,
@@ -113,7 +115,7 @@ export default function RegisterPage() {
               className="w-full rounded-lg border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-border-focus"
             />
             <p className="mt-1 text-xs text-text-muted">
-              At least 8 characters
+              At least 8 characters, with uppercase, lowercase, and a number
             </p>
           </div>
 

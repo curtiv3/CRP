@@ -32,19 +32,19 @@ const updateSchema = z.object({
   tone: z.enum(["casual", "professional", "mixed"]).optional(),
   vocabulary: z
     .object({
-      preferences: z.array(z.string()).optional(),
-      avoidances: z.array(z.string()).optional(),
+      preferences: z.array(z.string().max(100)).max(50).optional(),
+      avoidances: z.array(z.string().max(100)).max(50).optional(),
       emojiUsage: z.enum(["none", "minimal", "moderate", "heavy"]).optional(),
       hashtagUsage: z.enum(["none", "minimal", "platform_specific"]).optional(),
     })
     .optional(),
-  hookPatterns: z.array(z.string()).optional(),
+  hookPatterns: z.array(z.string().max(200)).max(20).optional(),
   platformPreferences: z
     .object({
       formalityScore: z.number().min(1).max(10).optional(),
-      signaturePatterns: z.array(z.string()).optional(),
+      signaturePatterns: z.array(z.string().max(200)).max(20).optional(),
     })
-    .passthrough()
+    .strict()
     .optional(),
 });
 

@@ -6,21 +6,10 @@ import { EpisodeStatus } from "@/components/episodes/episode-status";
 import { ContentDisplay } from "@/components/content/content-display";
 import { DownloadButton } from "@/components/content/download-button";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const episode = await prisma.episode.findUnique({
-    where: { id },
-    select: { title: true },
-  });
-
+export function generateMetadata() {
+  // Static title to avoid leaking episode titles without auth
   return {
-    title: episode
-      ? `${episode.title} — ContentRepurpose`
-      : "Episode — ContentRepurpose",
+    title: "Episode — ContentRepurpose",
   };
 }
 

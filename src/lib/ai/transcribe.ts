@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { getPresignedDownloadUrl } from "@/lib/storage/s3";
+import { validateExternalUrl } from "@/lib/validate-url";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -42,6 +43,9 @@ export async function transcribeFromFileKey(
 export async function transcribeFromUrl(
   url: string,
 ): Promise<TranscriptionResult> {
+  // Prevent SSRF — block internal/private network addresses
+  validateExternalUrl(url);
+
   const response = await fetch(url);
 
   if (!response.ok) {

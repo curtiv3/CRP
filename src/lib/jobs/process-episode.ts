@@ -11,12 +11,13 @@ export async function processEpisode(
 ): Promise<void> {
   const { episodeId, userId } = job.data;
 
-  const episode = await prisma.episode.findUnique({
-    where: { id: episodeId },
+  // Validate both episode existence and ownership to prevent tampered job data
+  const episode = await prisma.episode.findFirst({
+    where: { id: episodeId, userId },
   });
 
   if (!episode) {
-    throw new Error(`Episode ${episodeId} not found`);
+    throw new Error(`Episode ${episodeId} not found or not owned by user ${userId}`);
   }
 
   try {
@@ -109,14 +110,20 @@ export async function processEpisode(
 
     await job.updateProgress(100);
   } catch (error) {
-    const message =
+    // Sanitize error message before storing — strip file paths, API keys, and internal details
+    const rawMessage =
       error instanceof Error ? error.message : "Unknown processing error";
+    const sanitizedMessage = rawMessage
+      .replace(/\/[^\s]+/g, "[path]")      // Strip file paths
+      .replace(/sk-[a-zA-Z0-9]+/g, "[key]") // Strip OpenAI keys
+      .replace(/https?:\/\/[^\s]+/g, "[url]") // Strip URLs that may contain tokens
+      .slice(0, 200);
 
     await prisma.episode.update({
       where: { id: episodeId },
       data: {
         status: "FAILED",
-        errorMessage: message,
+        errorMessage: sanitizedMessage,
       },
     });
 

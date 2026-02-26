@@ -19,6 +19,9 @@ const s3Client = new S3Client({
 
 const BUCKET = process.env.S3_BUCKET ?? "contentrepurpose";
 
+/** Maximum upload file size: 500 MB */
+const MAX_UPLOAD_SIZE = 500 * 1024 * 1024;
+
 const ALLOWED_TYPES: Record<string, string> = {
   "audio/mpeg": "mp3",
   "audio/wav": "wav",
@@ -35,7 +38,7 @@ export async function createPresignedUploadUrl(
   userId: string,
   fileName: string,
   contentType: string,
-): Promise<{ uploadUrl: string; fileKey: string }> {
+): Promise<{ uploadUrl: string; fileKey: string; maxFileSize: number }> {
   const ext = ALLOWED_TYPES[contentType];
   if (!ext) {
     throw new Error(`Unsupported file type: ${contentType}`);
@@ -47,13 +50,15 @@ export async function createPresignedUploadUrl(
     Bucket: BUCKET,
     Key: fileKey,
     ContentType: contentType,
+    ContentLength: MAX_UPLOAD_SIZE,
   });
 
   const uploadUrl = await getSignedUrl(s3Client, command, {
-    expiresIn: 3600,
+    expiresIn: 600, // 10 minutes — short-lived upload window
+    signableHeaders: new Set(["content-type"]),
   });
 
-  return { uploadUrl, fileKey };
+  return { uploadUrl, fileKey, maxFileSize: MAX_UPLOAD_SIZE };
 }
 
 export async function getFileStream(fileKey: string) {
@@ -74,7 +79,7 @@ export async function getPresignedDownloadUrl(
     Key: fileKey,
   });
 
-  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+  return getSignedUrl(s3Client, command, { expiresIn: 900 }); // 15 minutes
 }
 
 export async function deleteFile(fileKey: string): Promise<void> {

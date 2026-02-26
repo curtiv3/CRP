@@ -66,6 +66,8 @@ export default function LandingPage() {
 
       <Footer />
 
+      {/* SECURITY: dangerouslySetInnerHTML is safe here because the content is
+          hardcoded static JSON-LD. Never interpolate user-supplied data into this block. */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

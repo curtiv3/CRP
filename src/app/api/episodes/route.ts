@@ -3,18 +3,32 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
 import { addEpisodeJob } from "@/lib/jobs/queue";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
+import { validateExternalUrl } from "@/lib/validate-url";
 
 const createEpisodeSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
+  title: z.string().min(1, "Title is required").max(500, "Title is too long"),
+  description: z.string().max(2000, "Description is too long").optional(),
   sourceType: z.enum(["UPLOAD", "YOUTUBE_URL", "PODCAST_URL"]),
   sourceUrl: z.string().url().optional(),
   fileKey: z.string().optional(),
 });
 
+/** Free tier: 2 episodes/month */
+const FREE_TIER_MONTHLY_LIMIT = 2;
+
 export async function POST(request: Request) {
   try {
     const context = await requireUserContext();
+
+    // Rate limit: 10 episode creations per hour per user
+    const rl = checkRateLimit(`episodes:${context.userId}`, 10, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many episodes created. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
 
     const body = await request.json();
     const parsed = createEpisodeSchema.safeParse(body);
@@ -35,6 +49,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate fileKey belongs to the authenticated user (prevent cross-user S3 access)
+    if (sourceType === "UPLOAD" && fileKey) {
+      if (!fileKey.startsWith(`uploads/${context.userId}/`)) {
+        return NextResponse.json(
+          { error: "Invalid file key" },
+          { status: 403 },
+        );
+      }
+    }
+
     if (
       (sourceType === "YOUTUBE_URL" || sourceType === "PODCAST_URL") &&
       !sourceUrl
@@ -43,6 +67,39 @@ export async function POST(request: Request) {
         { error: "URL is required for URL-based sources" },
         { status: 400 },
       );
+    }
+
+    // Validate sourceUrl against SSRF if provided
+    if (sourceUrl) {
+      try {
+        validateExternalUrl(sourceUrl);
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid or disallowed URL" },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Enforce subscription tier limits
+    if (context.user.subscriptionTier === "FREE") {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const episodesThisMonth = await prisma.episode.count({
+        where: {
+          userId: context.userId,
+          createdAt: { gte: startOfMonth },
+        },
+      });
+
+      if (episodesThisMonth >= FREE_TIER_MONTHLY_LIMIT) {
+        return NextResponse.json(
+          { error: "Free tier limit reached (2 episodes per month). Upgrade to Pro for unlimited episodes." },
+          { status: 403 },
+        );
+      }
     }
 
     const episode = await prisma.episode.create({

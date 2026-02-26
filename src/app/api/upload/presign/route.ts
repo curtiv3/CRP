@@ -2,15 +2,25 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUserContext } from "@/lib/auth-context";
 import { createPresignedUploadUrl, isAllowedFileType } from "@/lib/storage/s3";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const presignSchema = z.object({
-  fileName: z.string().min(1, "File name is required"),
+  fileName: z.string().min(1, "File name is required").max(255, "File name is too long"),
   contentType: z.string().min(1, "Content type is required"),
 });
 
 export async function POST(request: Request) {
   try {
     const context = await requireUserContext();
+
+    // Rate limit: 20 presigned URL requests per hour per user
+    const rl = checkRateLimit(`presign:${context.userId}`, 20, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many upload requests. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
 
     const body = await request.json();
     const parsed = presignSchema.safeParse(body);
@@ -31,13 +41,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const { uploadUrl, fileKey } = await createPresignedUploadUrl(
+    const { uploadUrl, fileKey, maxFileSize } = await createPresignedUploadUrl(
       context.userId,
       fileName,
       contentType,
     );
 
-    return NextResponse.json({ uploadUrl, fileKey });
+    return NextResponse.json({ uploadUrl, fileKey, maxFileSize });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

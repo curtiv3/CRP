@@ -47,18 +47,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   session: {
     strategy: "jwt",
+    maxAge: 24 * 60 * 60, // 24 hours
+    updateAge: 60 * 60,   // Refresh token every hour
   },
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === "google") {
+        // Guard against missing email from OAuth provider
+        if (!user.email) {
+          return false;
+        }
+
         const existingUser = await prisma.user.findUnique({
-          where: { email: user.email! },
+          where: { email: user.email },
         });
 
         if (!existingUser) {
           const newUser = await prisma.user.create({
             data: {
-              email: user.email!,
+              email: user.email,
               name: user.name,
               image: user.image,
             },
@@ -84,8 +91,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async jwt({ token, user }) {
       if (user) {
+        if (!user.email) {
+          return token;
+        }
         const dbUser = await prisma.user.findUnique({
-          where: { email: user.email! },
+          where: { email: user.email },
         });
         if (dbUser) {
           token.userId = dbUser.id;
