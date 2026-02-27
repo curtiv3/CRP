@@ -24,7 +24,7 @@ export async function POST(
     // Only update to COPIED if still in GENERATED state
     if (piece.status === "GENERATED") {
       await prisma.contentPiece.update({
-        where: { id },
+        where: { id, userId: context.userId },
         data: { status: "COPIED" },
       });
     }

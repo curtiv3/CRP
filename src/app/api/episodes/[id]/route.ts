@@ -64,7 +64,7 @@ export async function DELETE(
       });
     }
 
-    await prisma.episode.delete({ where: { id } });
+    await prisma.episode.delete({ where: { id, userId: context.userId } });
 
     return NextResponse.json({ success: true });
   } catch (error) {
