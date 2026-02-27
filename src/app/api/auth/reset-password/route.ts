@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
@@ -58,11 +59,12 @@ export async function POST(request: Request) {
 
     const passwordHash = await hash(newPassword, 12);
 
-    // Update password and delete ALL tokens for this user in one transaction
+    // Update password, rotate securityStamp (invalidates all existing JWT
+    // sessions), and delete ALL tokens for this user in one transaction.
     await prisma.$transaction([
       prisma.user.update({
         where: { id: match.userId },
-        data: { passwordHash },
+        data: { passwordHash, securityStamp: randomUUID() },
       }),
       prisma.passwordResetToken.deleteMany({
         where: { userId: match.userId },

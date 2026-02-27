@@ -15,6 +15,11 @@ model User {
   image         String?
   emailVerified DateTime?
 
+  /// Random value rotated on password change. JWTs that carry a stale stamp
+  /// are rejected on the next token refresh, effectively invalidating all
+  /// existing sessions after a password reset.
+  securityStamp String    @default(cuid())
+
   stripeCustomerId    String?
   subscriptionTier    SubscriptionTier @default(FREE)
   subscriptionStatus  SubscriptionStatus @default(ACTIVE)
