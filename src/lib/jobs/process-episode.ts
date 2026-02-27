@@ -30,6 +30,23 @@ export async function processEpisode(
     return;
   }
 
+  // Email verification gate: don't spend API credits for unverified users
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { emailVerified: true },
+  });
+  if (!user?.emailVerified) {
+    await prisma.episode.update({
+      where: { id: episodeId },
+      data: {
+        status: "FAILED",
+        errorMessage:
+          "Please verify your email address before processing episodes.",
+      },
+    });
+    return;
+  }
+
   // Global circuit breaker: hard cap on total API spend across all users.
   // This runs before any per-user check as the last line of defence.
   const globalLimits = await checkGlobalLimits();
