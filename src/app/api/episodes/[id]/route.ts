@@ -13,6 +13,7 @@ export async function GET(
 
     const episode = await prisma.episode.findFirst({
       where: { id, userId: context.userId },
+      omit: { transcription: true },
       include: {
         contentPieces: {
           orderBy: [{ platform: "asc" }, { order: "asc" }],

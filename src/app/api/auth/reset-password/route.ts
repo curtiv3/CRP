@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const schema = z.object({
   token: z.string().min(1),
@@ -16,6 +17,18 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // Rate limit by IP to prevent brute-force and expensive token scans
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "unknown";
+    const rl = checkRateLimit(`reset-password:${ip}`, 10, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many attempts. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
+
     const body = (await request.json()) as Record<string, unknown>;
     const parsed = schema.safeParse(body);
 
@@ -29,10 +42,12 @@ export async function POST(request: Request) {
     const { token, newPassword } = parsed.data;
 
     // Find all non-expired tokens and do a timing-safe comparison
-    // to prevent timing side-channel attacks on the token value
+    // to prevent timing side-channel attacks on the token value.
+    // Capped at 500 to bound memory usage under adversarial conditions.
     const candidates = await prisma.passwordResetToken.findMany({
       where: { expiresAt: { gt: new Date() } },
       select: { id: true, userId: true, token: true },
+      take: 500,
     });
 
     const tokenBuffer = Buffer.from(token);

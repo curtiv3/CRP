@@ -78,11 +78,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         if (!existingUser) {
+          // Google already verified the email, so mark it as verified
           const newUser = await prisma.user.create({
             data: {
               email: user.email,
               name: user.name,
               image: user.image,
+              emailVerified: new Date(),
             },
           });
 

@@ -4,7 +4,15 @@ import { stripe, tierFromPriceId, syncBudgetLimit } from "@/lib/billing/stripe";
 import { prisma } from "@/lib/prisma";
 import type { SubscriptionTier } from "@prisma/client";
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
+function getWebhookSecret(): string {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
+  }
+  return secret;
+}
+
+const VALID_TIERS: ReadonlySet<string> = new Set<string>(["FREE", "PRO", "GROWTH"]);
 
 export async function POST(request: Request) {
   const body = await request.text();
@@ -19,7 +27,7 @@ export async function POST(request: Request) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(body, signature, getWebhookSecret());
   } catch {
     return NextResponse.json(
       { error: "Invalid webhook signature" },
@@ -49,11 +57,13 @@ async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session,
 ): Promise<void> {
   const userId = session.metadata?.userId;
-  const tier = session.metadata?.tier as SubscriptionTier | undefined;
+  const tier = session.metadata?.tier;
 
-  if (!userId || !tier) {
-    console.warn("[BILLING] checkout.session.completed missing metadata", {
+  if (!userId || !tier || !VALID_TIERS.has(tier)) {
+    console.warn("[BILLING] checkout.session.completed missing or invalid metadata", {
       sessionId: session.id,
+      userId,
+      tier,
     });
     return;
   }
@@ -66,13 +76,13 @@ async function handleCheckoutCompleted(
   await prisma.user.update({
     where: { id: userId },
     data: {
-      subscriptionTier: tier,
+      subscriptionTier: tier as SubscriptionTier,
       subscriptionStatus: "ACTIVE",
       stripeCustomerId: customerId ?? undefined,
     },
   });
 
-  await syncBudgetLimit(userId, tier);
+  await syncBudgetLimit(userId, tier as SubscriptionTier);
 }
 
 async function handleSubscriptionUpdated(
