@@ -6,6 +6,7 @@ const s3Endpoint = process.env.S3_ENDPOINT ?? "";
 const s3ConnectSrc = s3Endpoint ? ` ${s3Endpoint}` : "";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   async headers() {
     return [
       {
