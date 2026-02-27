@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const updateContentSchema = z.object({
   content: z.string().min(1, "Content is required").max(10000, "Content is too long").optional(),
@@ -17,6 +18,15 @@ export async function PATCH(
   try {
     const context = await requireUserContext();
     const { id } = await params;
+
+    // Rate limit: 60 edits per hour per user
+    const rl = checkRateLimit(`content-edit:${context.userId}`, 60, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many edits. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
 
     const body = await request.json();
     const parsed = updateContentSchema.safeParse(body);
