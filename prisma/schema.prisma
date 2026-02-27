@@ -22,6 +22,8 @@ model User {
   contentPieces ContentPiece[]
   styleProfile  StyleProfile?
   accounts      Account[]
+  usageRecords  UsageRecord[]
+  usageBudget   UsageBudget?
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -74,6 +76,7 @@ model Episode {
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   contentPieces ContentPiece[]
+  usageRecords  UsageRecord[]
 
   processedAt   DateTime?
   createdAt     DateTime      @default(now())
@@ -101,6 +104,45 @@ model ContentPiece {
 
   @@index([episodeId])
   @@index([userId])
+}
+
+model UsageRecord {
+  id           String         @id @default(cuid())
+  userId       String
+  episodeId    String?
+  operation    UsageOperation
+  inputTokens  Int
+  outputTokens Int
+  cost         Float
+  model        String
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode      Episode?       @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime       @default(now())
+
+  @@index([userId])
+  @@index([episodeId])
+  @@index([createdAt])
+}
+
+model UsageBudget {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  monthlyLimitCents     Int
+  currentMonthUsageCents Int     @default(0)
+  lastResetAt           DateTime @default(now())
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt             DateTime @updatedAt
+}
+
+enum UsageOperation {
+  TRANSCRIPTION
+  ANALYSIS
+  GENERATION
+  STYLE_ANALYSIS
 }
 
 enum SubscriptionTier {

@@ -5,6 +5,7 @@ import { analyzeTranscription } from "@/lib/ai/analyze";
 import { generateContent } from "@/lib/ai/generate";
 import { updateStyleProfile } from "@/lib/ai/style";
 import { validateUploadedFileSize } from "@/lib/storage/s3";
+import { checkBudget } from "@/lib/usage/guard";
 import type { EpisodeJobData } from "./queue";
 
 export async function processEpisode(
@@ -28,6 +29,22 @@ export async function processEpisode(
     return;
   }
 
+  // Budget guard: reject before spending any AI credits
+  const budget = await checkBudget(userId);
+  if (!budget.allowed) {
+    await prisma.episode.update({
+      where: { id: episodeId },
+      data: {
+        status: "FAILED",
+        errorMessage:
+          "Monthly usage limit reached. Upgrade your plan for more credits.",
+      },
+    });
+    return;
+  }
+
+  const tracking = { userId, episodeId };
+
   try {
     // Step 1: Transcription
     await prisma.episode.update({
@@ -44,7 +61,10 @@ export async function processEpisode(
     // Verify the uploaded file doesn't exceed the size limit before processing
     await validateUploadedFileSize(episode.fileKey);
 
-    const transcriptionResult = await transcribeFromFileKey(episode.fileKey);
+    const transcriptionResult = await transcribeFromFileKey(
+      episode.fileKey,
+      tracking,
+    );
 
     await prisma.episode.update({
       where: { id: episodeId },
@@ -65,6 +85,7 @@ export async function processEpisode(
     const analysis = await analyzeTranscription(
       transcriptionResult.text,
       episode.title,
+      tracking,
     );
 
     await job.updateProgress(55);
@@ -84,6 +105,7 @@ export async function processEpisode(
       episode.title,
       transcriptionResult.text,
       styleProfile,
+      tracking,
     );
 
     await job.updateProgress(85);
@@ -114,7 +136,7 @@ export async function processEpisode(
 
     // Step 5: Update style profile (non-blocking — don't fail the job)
     try {
-      await updateStyleProfile(userId);
+      await updateStyleProfile(userId, episodeId);
     } catch {
       // Style profile update is best-effort; don't fail the episode
     }

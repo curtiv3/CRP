@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import type { AnalysisResult } from "./analyze";
+import { trackChatUsage } from "@/lib/usage/tracker";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -79,11 +80,17 @@ interface StyleProfile {
   platformPreferences: unknown;
 }
 
+interface TrackingContext {
+  userId: string;
+  episodeId: string | null;
+}
+
 export async function generateContent(
   analysis: AnalysisResult,
   episodeTitle: string,
   transcription: string,
   styleProfile?: StyleProfile | null,
+  tracking?: TrackingContext,
 ): Promise<GeneratedPiece[]> {
   const segmentsText = analysis.segments
     .map((s) => `[${s.type}] ${s.content}${s.context ? ` (Context: ${s.context})` : ""}`)
@@ -115,6 +122,16 @@ ${transcription.slice(0, 3000)}`;
     temperature: 0.7,
     max_tokens: 4096,
   });
+
+  if (tracking) {
+    await trackChatUsage(
+      tracking.userId,
+      tracking.episodeId,
+      "GENERATION",
+      "gpt-4o",
+      response,
+    );
+  }
 
   const content = response.choices[0].message.content;
   if (!content) {

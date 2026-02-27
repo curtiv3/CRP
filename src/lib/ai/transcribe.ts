@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { getPresignedDownloadUrl, MAX_UPLOAD_SIZE } from "@/lib/storage/s3";
 import { validateResolvedUrl } from "@/lib/validate-url";
+import { trackTranscriptionUsage } from "@/lib/usage/tracker";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -14,8 +15,14 @@ export interface TranscriptionResult {
   duration: number;
 }
 
+interface TrackingContext {
+  userId: string;
+  episodeId: string | null;
+}
+
 export async function transcribeFromFileKey(
   fileKey: string,
+  tracking?: TrackingContext,
 ): Promise<TranscriptionResult> {
   const downloadUrl = await getPresignedDownloadUrl(fileKey);
   const response = await fetch(downloadUrl);
@@ -37,9 +44,19 @@ export async function transcribeFromFileKey(
     response_format: "verbose_json",
   });
 
+  const duration = Math.round(transcription.duration ?? 0);
+
+  if (tracking) {
+    await trackTranscriptionUsage(
+      tracking.userId,
+      tracking.episodeId,
+      duration,
+    );
+  }
+
   return {
     text: transcription.text,
-    duration: Math.round(transcription.duration ?? 0),
+    duration,
   };
 }
 
@@ -100,6 +117,7 @@ async function fetchWithSizeLimit(url: string, maxBytes: number): Promise<ArrayB
 
 export async function transcribeFromUrl(
   url: string,
+  tracking?: TrackingContext,
 ): Promise<TranscriptionResult> {
   // Prevent SSRF — block internal/private addresses and DNS rebinding
   await validateResolvedUrl(url);
@@ -115,9 +133,19 @@ export async function transcribeFromUrl(
     response_format: "verbose_json",
   });
 
+  const duration = Math.round(transcription.duration ?? 0);
+
+  if (tracking) {
+    await trackTranscriptionUsage(
+      tracking.userId,
+      tracking.episodeId,
+      duration,
+    );
+  }
+
   return {
     text: transcription.text,
-    duration: Math.round(transcription.duration ?? 0),
+    duration,
   };
 }
 

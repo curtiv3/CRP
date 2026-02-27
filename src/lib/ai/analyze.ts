@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { trackChatUsage } from "@/lib/usage/tracker";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -46,9 +47,15 @@ Return as JSON with this exact structure:
 
 Be selective — quality over quantity. A 60-minute episode should yield 8-12 key segments, not 50. A 10-minute episode should yield 4-6.`;
 
+interface TrackingContext {
+  userId: string;
+  episodeId: string | null;
+}
+
 export async function analyzeTranscription(
   transcription: string,
   episodeTitle: string,
+  tracking?: TrackingContext,
 ): Promise<AnalysisResult> {
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -62,6 +69,16 @@ export async function analyzeTranscription(
     response_format: { type: "json_object" },
     temperature: 0.3,
   });
+
+  if (tracking) {
+    await trackChatUsage(
+      tracking.userId,
+      tracking.episodeId,
+      "ANALYSIS",
+      "gpt-4o",
+      response,
+    );
+  }
 
   const content = response.choices[0].message.content;
   if (!content) {
