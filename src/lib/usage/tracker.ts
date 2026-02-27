@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { UsageOperation } from "@prisma/client";
 import { getLimitCentsForTier } from "@/lib/usage/tiers";
@@ -18,6 +19,67 @@ interface ChatUsageResponse {
     prompt_tokens: number;
     completion_tokens: number;
   };
+}
+
+/**
+ * Increment the user's UsageBudget by costCents.
+ *
+ * The budget row is guaranteed to exist because checkBudget() runs
+ * before any AI call in processEpisode. We use a plain update as
+ * the primary path, which avoids the race condition that upsert has
+ * when two concurrent workers both try to create the row.
+ *
+ * Defensive fallback: if the row somehow doesn't exist (P2025), we
+ * create it via upsert. If two callers race on the fallback and one
+ * hits the unique constraint (P2002), we retry with a pure update.
+ */
+async function incrementBudget(
+  userId: string,
+  costCents: number,
+): Promise<void> {
+  try {
+    // Happy path: row already exists (guaranteed by checkBudget)
+    await prisma.usageBudget.update({
+      where: { userId },
+      data: { currentMonthUsageCents: { increment: costCents } },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025" // Record not found
+    ) {
+      // Defensive: row missing — create it via upsert
+      try {
+        const limitCents = await getDefaultLimitCents(userId);
+        await prisma.usageBudget.upsert({
+          where: { userId },
+          create: {
+            userId,
+            monthlyLimitCents: limitCents,
+            currentMonthUsageCents: costCents,
+            lastResetAt: new Date(),
+          },
+          update: {
+            currentMonthUsageCents: { increment: costCents },
+          },
+        });
+      } catch (upsertError) {
+        if (
+          upsertError instanceof Prisma.PrismaClientKnownRequestError &&
+          upsertError.code === "P2002" // Unique constraint — another caller won the create
+        ) {
+          await prisma.usageBudget.update({
+            where: { userId },
+            data: { currentMonthUsageCents: { increment: costCents } },
+          });
+        } else {
+          throw upsertError;
+        }
+      }
+    } else {
+      throw error;
+    }
+  }
 }
 
 /**
@@ -49,31 +111,19 @@ export async function trackChatUsage(
     inputTokens * pricing.input + outputTokens * pricing.output;
   const costCents = Math.ceil(cost * 100);
 
-  await prisma.$transaction([
-    prisma.usageRecord.create({
-      data: {
-        userId,
-        episodeId,
-        operation,
-        inputTokens,
-        outputTokens,
-        cost,
-        model,
-      },
-    }),
-    prisma.usageBudget.upsert({
-      where: { userId },
-      create: {
-        userId,
-        monthlyLimitCents: await getDefaultLimitCents(userId),
-        currentMonthUsageCents: costCents,
-        lastResetAt: new Date(),
-      },
-      update: {
-        currentMonthUsageCents: { increment: costCents },
-      },
-    }),
-  ]);
+  await prisma.usageRecord.create({
+    data: {
+      userId,
+      episodeId,
+      operation,
+      inputTokens,
+      outputTokens,
+      cost,
+      model,
+    },
+  });
+
+  await incrementBudget(userId, costCents);
 }
 
 /**
@@ -89,31 +139,19 @@ export async function trackTranscriptionUsage(
   const cost = durationMinutes * WHISPER_COST_PER_MINUTE;
   const costCents = Math.ceil(cost * 100);
 
-  await prisma.$transaction([
-    prisma.usageRecord.create({
-      data: {
-        userId,
-        episodeId,
-        operation: "TRANSCRIPTION",
-        inputTokens: 0,
-        outputTokens: 0,
-        cost,
-        model: "whisper-1",
-      },
-    }),
-    prisma.usageBudget.upsert({
-      where: { userId },
-      create: {
-        userId,
-        monthlyLimitCents: await getDefaultLimitCents(userId),
-        currentMonthUsageCents: costCents,
-        lastResetAt: new Date(),
-      },
-      update: {
-        currentMonthUsageCents: { increment: costCents },
-      },
-    }),
-  ]);
+  await prisma.usageRecord.create({
+    data: {
+      userId,
+      episodeId,
+      operation: "TRANSCRIPTION",
+      inputTokens: 0,
+      outputTokens: 0,
+      cost,
+      model: "whisper-1",
+    },
+  });
+
+  await incrementBudget(userId, costCents);
 }
 
 async function getDefaultLimitCents(userId: string): Promise<number> {
