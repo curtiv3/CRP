@@ -3,16 +3,14 @@ import { processEpisode } from "./process-episode";
 
 const worker = createEpisodeWorker(processEpisode);
 
-console.log("Episode processing worker started");
+console.log("Worker started, waiting for jobs...");
 
-process.on("SIGTERM", async () => {
-  console.log("Shutting down worker...");
+async function shutdown(signal: string): Promise<void> {
+  console.log(`Received ${signal}, shutting down worker...`);
   await worker.close();
+  console.log("Worker closed.");
   process.exit(0);
-});
+}
 
-process.on("SIGINT", async () => {
-  console.log("Shutting down worker...");
-  await worker.close();
-  process.exit(0);
-});
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
