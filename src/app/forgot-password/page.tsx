@@ -1,14 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
-  const router = useRouter();
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,17 +15,19 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
 
-      if (result?.error) {
-        setError("Invalid email or password");
-      } else {
-        router.push("/dashboard");
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        setError(data.error ?? "Something went wrong");
+        return;
       }
+
+      setSubmitted(true);
     } catch {
       setError("Something went wrong");
     } finally {
@@ -36,15 +35,37 @@ export default function LoginPage() {
     }
   };
 
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-primary px-4">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="text-2xl font-semibold text-text-primary">
+            Check your email
+          </h1>
+          <p className="mt-2 text-sm text-text-secondary">
+            If an account with that email exists, we sent a password reset link.
+            It expires in 1 hour.
+          </p>
+          <Link
+            href="/login"
+            className="mt-6 inline-block text-sm text-brand hover:text-brand-hover font-medium"
+          >
+            Back to sign in
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-primary px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-semibold text-text-primary">
-            Welcome back
+            Reset your password
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Sign in to your account
+            Enter your email and we&apos;ll send you a reset link
           </p>
         </div>
 
@@ -66,59 +87,24 @@ export default function LoginPage() {
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-text-primary mb-1.5"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-lg border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-border-focus"
-            />
-          </div>
-
           {error && <p className="text-sm text-danger">{error}</p>}
-
-          <div className="flex justify-end">
-            <Link
-              href="/forgot-password"
-              className="text-xs text-brand hover:text-brand-hover font-medium"
-            >
-              Forgot password?
-            </Link>
-          </div>
 
           <button
             type="submit"
             disabled={loading}
             className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-text-inverse transition-colors hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Sending..." : "Send reset link"}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
-          <button
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-            className="w-full rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-colors hover:bg-bg-elevated"
-          >
-            Continue with Google
-          </button>
-        </div>
-
         <p className="mt-6 text-center text-sm text-text-secondary">
-          Don&apos;t have an account?{" "}
+          Remember your password?{" "}
           <Link
-            href="/register"
+            href="/login"
             className="text-brand hover:text-brand-hover font-medium"
           >
-            Sign up
+            Sign in
           </Link>
         </p>
       </div>

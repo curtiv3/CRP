@@ -26,6 +26,7 @@ model User {
   usageRecords  UsageRecord[]
   usageBudget   UsageBudget?
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -51,6 +52,19 @@ model Account {
 }
 
 model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
   id        String   @id @default(cuid())
   userId    String
   token     String   @unique

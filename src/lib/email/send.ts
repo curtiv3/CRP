@@ -28,3 +28,27 @@ export async function sendVerificationEmail(
     ].join("\n"),
   });
 }
+
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+): Promise<void> {
+  const resetUrl = `${APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
+
+  await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: email,
+    subject: "Reset your password — ContentRepurpose",
+    text: [
+      "You requested a password reset for your ContentRepurpose account.",
+      "",
+      "Click the link below to set a new password:",
+      "",
+      resetUrl,
+      "",
+      "This link expires in 1 hour.",
+      "",
+      "If you didn't request this, you can safely ignore this email.",
+    ].join("\n"),
+  });
+}
