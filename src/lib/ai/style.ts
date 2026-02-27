@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { trackChatUsage } from "@/lib/usage/tracker";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -47,8 +48,14 @@ Focus on patterns that distinguish this creator from generic AI output. Look for
 
 If there aren't enough samples to detect a clear pattern for a field, use reasonable defaults and note it in signaturePatterns.`;
 
+interface TrackingContext {
+  userId: string;
+  episodeId: string | null;
+}
+
 export async function analyzeStyleFromContent(
   editedPieces: Array<{ platform: string; content: string }>,
+  tracking?: TrackingContext,
 ): Promise<StyleProfileData> {
   const contentByPlatform = new Map<string, string[]>();
   for (const piece of editedPieces) {
@@ -75,6 +82,16 @@ export async function analyzeStyleFromContent(
     response_format: { type: "json_object" },
     temperature: 0.3,
   });
+
+  if (tracking) {
+    await trackChatUsage(
+      tracking.userId,
+      tracking.episodeId,
+      "STYLE_ANALYSIS",
+      "gpt-4o",
+      response,
+    );
+  }
 
   const content = response.choices[0].message.content;
   if (!content) {
@@ -104,7 +121,10 @@ export async function analyzeStyleFromContent(
   return result.data as StyleProfileData;
 }
 
-export async function updateStyleProfile(userId: string): Promise<void> {
+export async function updateStyleProfile(
+  userId: string,
+  episodeId?: string | null,
+): Promise<void> {
   // Count completed episodes for this user
   const completedCount = await prisma.episode.count({
     where: { userId, status: "COMPLETE" },
@@ -139,6 +159,7 @@ export async function updateStyleProfile(userId: string): Promise<void> {
 
   const styleData = await analyzeStyleFromContent(
     samplePieces.map((p) => ({ platform: p.platform, content: p.content })),
+    { userId, episodeId: episodeId ?? null },
   );
 
   await prisma.styleProfile.upsert({

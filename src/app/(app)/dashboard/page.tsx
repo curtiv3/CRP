@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUserContext } from "@/lib/auth-context";
 import { EpisodeList } from "@/components/episodes/episode-list";
+import { UsageBar } from "@/components/usage/usage-bar";
 
 export const metadata = {
   title: "Dashboard — ContentRepurpose",
@@ -29,6 +30,8 @@ export default async function DashboardPage() {
 
   return (
     <div>
+      <UsageBar userId={context.userId} />
+
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">

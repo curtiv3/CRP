@@ -13,6 +13,7 @@ model User {
   name          String?
   passwordHash  String?
   image         String?
+  emailVerified DateTime?
 
   stripeCustomerId    String?
   subscriptionTier    SubscriptionTier @default(FREE)
@@ -22,6 +23,10 @@ model User {
   contentPieces ContentPiece[]
   styleProfile  StyleProfile?
   accounts      Account[]
+  usageRecords  UsageRecord[]
+  usageBudget   UsageBudget?
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -44,6 +49,32 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model StyleProfile {
@@ -74,6 +105,7 @@ model Episode {
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   contentPieces ContentPiece[]
+  usageRecords  UsageRecord[]
 
   processedAt   DateTime?
   createdAt     DateTime      @default(now())
@@ -101,6 +133,45 @@ model ContentPiece {
 
   @@index([episodeId])
   @@index([userId])
+}
+
+model UsageRecord {
+  id           String         @id @default(cuid())
+  userId       String
+  episodeId    String?
+  operation    UsageOperation
+  inputTokens  Int
+  outputTokens Int
+  cost         Float
+  model        String
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode      Episode?       @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime       @default(now())
+
+  @@index([userId])
+  @@index([episodeId])
+  @@index([createdAt])
+}
+
+model UsageBudget {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  monthlyLimitCents     Int
+  currentMonthUsageCents Int     @default(0)
+  lastResetAt           DateTime @default(now())
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt             DateTime @updatedAt
+}
+
+enum UsageOperation {
+  TRANSCRIPTION
+  ANALYSIS
+  GENERATION
+  STYLE_ANALYSIS
 }
 
 enum SubscriptionTier {

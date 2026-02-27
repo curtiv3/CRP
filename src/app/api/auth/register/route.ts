@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
+import { sendVerificationEmail } from "@/lib/email/send";
 
 const registerSchema = z.object({
   email: z.string().email("Invalid email address").max(254, "Email is too long"),
@@ -53,8 +55,23 @@ export async function POST(request: Request) {
 
     const passwordHash = await hash(password, 12);
 
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: { email, name, passwordHash },
+    });
+
+    // Generate verification token (24h expiry) and send email
+    const token = randomUUID();
+    await prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    // Fire-and-forget: don't fail registration if email delivery fails
+    sendVerificationEmail(email, token).catch(() => {
+      // Email delivery is best-effort during registration
     });
 
     return NextResponse.json(

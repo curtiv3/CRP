@@ -38,6 +38,7 @@ export const config = {
     "/api/content/:path*",
     "/api/upload/:path*",
     "/api/style-profile/:path*",
+    "/api/usage/:path*",
     "/api/billing/:path*",
   ],
 };
