@@ -6,6 +6,7 @@ import { generateContent } from "@/lib/ai/generate";
 import { updateStyleProfile } from "@/lib/ai/style";
 import { validateUploadedFileSize } from "@/lib/storage/s3";
 import { checkBudget } from "@/lib/usage/guard";
+import { checkGlobalLimits } from "@/lib/usage/circuit-breaker";
 import type { EpisodeJobData } from "./queue";
 
 export async function processEpisode(
@@ -29,7 +30,22 @@ export async function processEpisode(
     return;
   }
 
-  // Budget guard: reject before spending any AI credits
+  // Global circuit breaker: hard cap on total API spend across all users.
+  // This runs before any per-user check as the last line of defence.
+  const globalLimits = await checkGlobalLimits();
+  if (!globalLimits.allowed) {
+    await prisma.episode.update({
+      where: { id: episodeId },
+      data: {
+        status: "FAILED",
+        errorMessage:
+          "System is temporarily at capacity. Please try again later.",
+      },
+    });
+    return;
+  }
+
+  // Per-user budget guard: reject before spending any AI credits
   const budget = await checkBudget(userId);
   if (!budget.allowed) {
     await prisma.episode.update({
