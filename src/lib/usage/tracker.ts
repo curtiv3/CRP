@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { UsageOperation } from "@prisma/client";
+import { getLimitCentsForTier } from "@/lib/usage/tiers";
 
 // Pricing as of 2025 (USD per token)
 const PRICING: Record<string, { input: number; output: number }> = {
@@ -115,16 +116,10 @@ export async function trackTranscriptionUsage(
   ]);
 }
 
-const TIER_LIMITS: Record<string, number> = {
-  FREE: 100,
-  PRO: 700,
-  GROWTH: 2000,
-};
-
 async function getDefaultLimitCents(userId: string): Promise<number> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { subscriptionTier: true },
   });
-  return TIER_LIMITS[user?.subscriptionTier ?? "FREE"] ?? 100;
+  return getLimitCentsForTier(user?.subscriptionTier ?? "FREE");
 }

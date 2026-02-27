@@ -1,10 +1,5 @@
 import { prisma } from "@/lib/prisma";
-
-const TIER_LIMITS: Record<string, number> = {
-  FREE: 100,
-  PRO: 700,
-  GROWTH: 2000,
-};
+import { getLimitCentsForTier } from "@/lib/usage/tiers";
 
 export interface BudgetStatus {
   allowed: boolean;
@@ -15,6 +10,7 @@ export interface BudgetStatus {
 
 /**
  * Check whether the user is within their monthly usage budget.
+ * Auto-creates the UsageBudget row if none exists.
  * Auto-resets the counter if lastResetAt is from a previous month.
  */
 export async function checkBudget(userId: string): Promise<BudgetStatus> {
@@ -23,20 +19,22 @@ export async function checkBudget(userId: string): Promise<BudgetStatus> {
     select: { subscriptionTier: true },
   });
 
-  const limitCents = TIER_LIMITS[user?.subscriptionTier ?? "FREE"] ?? 100;
+  const limitCents = getLimitCentsForTier(user?.subscriptionTier ?? "FREE");
 
   let budget = await prisma.usageBudget.findUnique({
     where: { userId },
   });
 
   if (!budget) {
-    // First check — no budget row yet; user has full allowance
-    return {
-      allowed: true,
-      remainingCents: limitCents,
-      usedCents: 0,
-      limitCents,
-    };
+    // Auto-create budget row so it exists for subsequent trackUsage calls
+    budget = await prisma.usageBudget.create({
+      data: {
+        userId,
+        monthlyLimitCents: limitCents,
+        currentMonthUsageCents: 0,
+        lastResetAt: new Date(),
+      },
+    });
   }
 
   // Auto-reset: if lastResetAt is not in the current calendar month, zero out

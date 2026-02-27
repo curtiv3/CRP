@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import type { SubscriptionTier } from "@prisma/client";
+import { getLimitCentsForTier } from "@/lib/usage/tiers";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY environment variable is required");
@@ -11,12 +12,6 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const PRICE_IDS: Record<string, string> = {
   PRO: process.env.STRIPE_PRO_PRICE_ID ?? "",
   GROWTH: process.env.STRIPE_GROWTH_PRICE_ID ?? "",
-};
-
-const TIER_LIMITS_CENTS: Record<string, number> = {
-  FREE: 100,
-  PRO: 700,
-  GROWTH: 2000,
 };
 
 /**
@@ -104,7 +99,7 @@ export async function syncBudgetLimit(
   userId: string,
   tier: SubscriptionTier,
 ): Promise<void> {
-  const limitCents = TIER_LIMITS_CENTS[tier] ?? 100;
+  const limitCents = getLimitCentsForTier(tier);
 
   await prisma.usageBudget.upsert({
     where: { userId },
