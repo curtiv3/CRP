@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
-import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const schema = z.object({
-  token: z.string().min(1),
+  token: z.string().min(1).max(100),
   newPassword: z
     .string()
     .min(8, "Password must be at least 8 characters")
@@ -17,7 +16,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    // Rate limit by IP to prevent brute-force and expensive token scans
+    // Rate limit by IP to prevent brute-force token guessing
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       "unknown";
@@ -41,25 +40,16 @@ export async function POST(request: Request) {
 
     const { token, newPassword } = parsed.data;
 
-    // Find all non-expired tokens and do a timing-safe comparison
-    // to prevent timing side-channel attacks on the token value.
-    // Capped at 500 to bound memory usage under adversarial conditions.
-    const candidates = await prisma.passwordResetToken.findMany({
-      where: { expiresAt: { gt: new Date() } },
-      select: { id: true, userId: true, token: true },
-      take: 500,
+    // Direct DB lookup by indexed unique token column. Safe because tokens
+    // are 122-bit UUIDs (randomUUID) — brute-force is infeasible even with
+    // perfect timing info. This replaces the previous O(n) scan + timingSafeEqual
+    // approach which had a 500-row cap and leaked table size via response time.
+    const match = await prisma.passwordResetToken.findUnique({
+      where: { token },
+      select: { id: true, userId: true, expiresAt: true },
     });
 
-    const tokenBuffer = Buffer.from(token);
-    const match = candidates.find((c) => {
-      const candidateBuffer = Buffer.from(c.token);
-      if (tokenBuffer.length !== candidateBuffer.length) {
-        return false;
-      }
-      return timingSafeEqual(tokenBuffer, candidateBuffer);
-    });
-
-    if (!match) {
+    if (!match || match.expiresAt <= new Date()) {
       return NextResponse.json(
         { error: "Invalid or expired reset token" },
         { status: 400 },

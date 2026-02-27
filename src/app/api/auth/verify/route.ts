@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -7,7 +6,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get("token");
 
-  if (!token) {
+  if (!token || token.length > 100) {
     return NextResponse.redirect(
       new URL("/login?error=missing-token", request.url),
     );
@@ -23,24 +22,16 @@ export async function GET(request: Request) {
     );
   }
 
-  // Load all non-expired tokens and use timing-safe comparison to prevent
-  // timing side-channel attacks (matching the pattern in reset-password)
-  const candidates = await prisma.emailVerificationToken.findMany({
-    where: { expiresAt: { gt: new Date() } },
-    select: { id: true, userId: true, token: true },
-    take: 500,
+  // Direct DB lookup by indexed unique token column. Safe because tokens
+  // are 122-bit UUIDs (randomUUID) — brute-force is infeasible even with
+  // perfect timing info. Replaces the previous O(n) scan which had a
+  // 500-row cap and response time that leaked the table size.
+  const match = await prisma.emailVerificationToken.findUnique({
+    where: { token },
+    select: { id: true, userId: true, expiresAt: true },
   });
 
-  const tokenBuffer = Buffer.from(token);
-  const match = candidates.find((c) => {
-    const candidateBuffer = Buffer.from(c.token);
-    if (tokenBuffer.length !== candidateBuffer.length) {
-      return false;
-    }
-    return timingSafeEqual(tokenBuffer, candidateBuffer);
-  });
-
-  if (!match) {
+  if (!match || match.expiresAt <= new Date()) {
     return NextResponse.redirect(
       new URL("/login?error=invalid-token", request.url),
     );
