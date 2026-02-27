@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
 import { requireUserContext } from "@/lib/auth-context";
 import { checkBudget } from "@/lib/usage/guard";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 export async function GET() {
   try {
     const context = await requireUserContext();
+
+    // Rate limit: 30 requests per minute per user
+    const rl = checkRateLimit(`billing-status:${context.userId}`, 30, 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
+
     const budget = await checkBudget(context.userId);
 
     return NextResponse.json({

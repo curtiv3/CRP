@@ -78,11 +78,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         if (!existingUser) {
+          // Google already verified the email, so mark it as verified
           const newUser = await prisma.user.create({
             data: {
               email: user.email,
               name: user.name,
               image: user.image,
+              emailVerified: new Date(),
             },
           });
 
@@ -112,21 +114,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
         const dbUser = await prisma.user.findUnique({
           where: { email: user.email },
+          select: { id: true, subscriptionTier: true, securityStamp: true },
         });
         if (dbUser) {
           token.userId = dbUser.id;
           token.subscriptionTier = dbUser.subscriptionTier;
+          token.securityStamp = dbUser.securityStamp;
         }
       } else if (token.userId) {
-        // Token refresh: re-fetch subscriptionTier so upgrades/downgrades
-        // take effect without requiring the user to sign out and back in.
+        // Token refresh: re-fetch subscriptionTier + securityStamp.
+        // If the stamp changed (password reset), reject the token so
+        // all existing sessions are forced to re-authenticate.
         const dbUser = await prisma.user.findUnique({
           where: { id: token.userId as string },
-          select: { subscriptionTier: true },
+          select: { subscriptionTier: true, securityStamp: true },
         });
-        if (dbUser) {
-          token.subscriptionTier = dbUser.subscriptionTier;
+        if (!dbUser) {
+          // User deleted — invalidate token
+          return { ...token, userId: undefined };
         }
+        if (dbUser.securityStamp !== token.securityStamp) {
+          // Security stamp rotated (password change) — force re-login
+          return { ...token, userId: undefined };
+        }
+        token.subscriptionTier = dbUser.subscriptionTier;
       }
       return token;
     },

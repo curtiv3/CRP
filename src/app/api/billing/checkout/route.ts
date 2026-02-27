@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUserContext } from "@/lib/auth-context";
 import { createCheckoutSession, createPortalSession } from "@/lib/billing/stripe";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 const checkoutSchema = z.object({
   tier: z.enum(["PRO", "GROWTH"]),
@@ -14,6 +15,16 @@ const actionSchema = z.object({
 export async function POST(request: Request) {
   try {
     const context = await requireUserContext();
+
+    // Rate limit: 5 checkout/portal sessions per hour per user
+    const rl = checkRateLimit(`billing:${context.userId}`, 5, 60 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429, headers: rateLimitHeaders(rl) },
+      );
+    }
+
     const body = (await request.json()) as Record<string, unknown>;
 
     // If the user wants to manage their existing subscription, open the portal

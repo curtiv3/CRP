@@ -6,6 +6,7 @@ const s3Endpoint = process.env.S3_ENDPOINT ?? "";
 const s3ConnectSrc = s3Endpoint ? ` ${s3Endpoint}` : "";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   async headers() {
     return [
       {
@@ -33,6 +34,9 @@ const nextConfig: NextConfig = {
               "font-src 'self'",
               `connect-src 'self'${s3ConnectSrc}`,
               "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "object-src 'none'",
             ].join("; "),
           },
         ],

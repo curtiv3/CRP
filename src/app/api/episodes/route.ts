@@ -138,6 +138,7 @@ export async function GET() {
     const episodes = await prisma.episode.findMany({
       where: { userId: context.userId },
       orderBy: { createdAt: "desc" },
+      omit: { transcription: true },
       include: {
         _count: { select: { contentPieces: true } },
       },

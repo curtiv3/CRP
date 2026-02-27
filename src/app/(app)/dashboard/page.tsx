@@ -11,9 +11,14 @@ export const metadata = {
 export default async function DashboardPage() {
   const context = await requireUserContext();
 
+  // Omit transcription (can be very large) and internal fields not needed
+  // for the episode list. Only the safe subset is passed to the client component.
+  // Cap to 50 to bound server memory and response size.
   const episodes = await prisma.episode.findMany({
     where: { userId: context.userId },
     orderBy: { createdAt: "desc" },
+    take: 50,
+    omit: { transcription: true, fileKey: true, errorMessage: true, sourceUrl: true },
     include: {
       _count: { select: { contentPieces: true } },
     },
