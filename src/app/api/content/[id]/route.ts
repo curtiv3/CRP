@@ -52,7 +52,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.contentPiece.update({
-      where: { id },
+      where: { id, userId: context.userId },
       data: updateData,
     });
 

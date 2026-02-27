@@ -21,6 +21,13 @@ export async function processEpisode(
     throw new Error(`Episode ${episodeId} not found or not owned by user ${userId}`);
   }
 
+  // Idempotency guard: skip if already successfully processed.
+  // Prevents duplicate content pieces and wasted AI API calls if a completed
+  // job is re-enqueued after BullMQ prunes its completion record.
+  if (episode.status === "COMPLETE") {
+    return;
+  }
+
   try {
     // Step 1: Transcription
     await prisma.episode.update({

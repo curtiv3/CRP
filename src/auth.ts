@@ -28,6 +28,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         });
 
         if (!user?.passwordHash) {
+          // Perform a dummy bcrypt comparison to prevent timing-based
+          // user enumeration (existing users trigger ~50-100ms bcrypt cost).
+          await compare(password, "$2a$12$000000000000000000000uGBOtpNMTFGG65IYVVBTFnRaWWkyBOi");
           return null;
         }
 
@@ -61,6 +64,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const existingUser = await prisma.user.findUnique({
           where: { email: user.email },
         });
+
+        if (existingUser) {
+          // Block OAuth sign-in if this email belongs to a credentials-only account.
+          // Without this check, anyone who controls a Google account with the same
+          // email could gain access to the existing user's data.
+          const linkedAccount = await prisma.account.findFirst({
+            where: { userId: existingUser.id, provider: "google" },
+          });
+          if (!linkedAccount) {
+            return false;
+          }
+        }
 
         if (!existingUser) {
           const newUser = await prisma.user.create({

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { User } from "@prisma/client";
 
 export interface UserContext {
-  user: User;
+  user: Omit<User, "passwordHash">;
   userId: string;
 }
 
@@ -16,6 +16,7 @@ export async function getCurrentUserContext(): Promise<UserContext | null> {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
+    omit: { passwordHash: true },
   });
 
   if (!user) {
