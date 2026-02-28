@@ -80,6 +80,79 @@ interface StyleProfile {
   platformPreferences: unknown;
 }
 
+interface VocabularyData {
+  preferences?: string[];
+  avoidances?: string[];
+  emojiUsage?: string;
+  hashtagUsage?: string;
+}
+
+interface PlatformPreferencesData {
+  formalityScore?: number;
+  signaturePatterns?: string[];
+}
+
+const EMOJI_DESCRIPTIONS: Record<string, string> = {
+  none: "Do NOT use any emojis.",
+  minimal: "Use emojis sparingly — at most 1 per post, only when it adds clarity.",
+  moderate: "Use 1-2 emojis per post at natural hook points or emphasis moments.",
+  heavy: "Use 2-3 emojis per post minimum. Place them at hooks and key points. Example: '🔥 Ever wondered why...' — not just one emoji in the entire output.",
+};
+
+const HASHTAG_DESCRIPTIONS: Record<string, string> = {
+  none: "Do NOT include hashtags on any platform.",
+  minimal: "Include 1-2 hashtags only where highly relevant.",
+  platform_specific: "Add 3-5 hashtags on Instagram, none on Twitter, 1-3 on LinkedIn.",
+};
+
+function buildStyleBlock(style: StyleProfile): string {
+  const vocab = style.vocabulary as VocabularyData | undefined;
+  const platformPrefs = style.platformPreferences as PlatformPreferencesData | undefined;
+  const hooks = style.hookPatterns as string[] | undefined;
+
+  const lines: string[] = [
+    "",
+    "---",
+    "MANDATORY STYLE RULES (override all other instructions):",
+  ];
+
+  lines.push(`- Tone: ${style.tone}`);
+
+  if (platformPrefs?.formalityScore) {
+    lines.push(`- Formality: ${platformPrefs.formalityScore}/10`);
+  }
+
+  if (vocab?.emojiUsage) {
+    const desc = EMOJI_DESCRIPTIONS[vocab.emojiUsage] ?? EMOJI_DESCRIPTIONS.none;
+    lines.push(`- Emoji usage: ${vocab.emojiUsage.toUpperCase()} — ${desc}`);
+  }
+
+  if (vocab?.preferences && vocab.preferences.length > 0) {
+    lines.push(`- Vocabulary: MUST use these words/phrases naturally: "${vocab.preferences.join('", "')}"`);
+  }
+
+  if (vocab?.avoidances && vocab.avoidances.length > 0) {
+    lines.push(`- Vocabulary: NEVER use these words: "${vocab.avoidances.join('", "')}"`);
+  }
+
+  if (hooks && hooks.length > 0) {
+    lines.push(`- Hook patterns: ${hooks.join(", ")}`);
+  }
+
+  if (vocab?.hashtagUsage) {
+    const desc = HASHTAG_DESCRIPTIONS[vocab.hashtagUsage] ?? HASHTAG_DESCRIPTIONS.none;
+    lines.push(`- Hashtag usage: ${desc}`);
+  }
+
+  if (platformPrefs?.signaturePatterns && platformPrefs.signaturePatterns.length > 0) {
+    lines.push(`- Signature patterns: ${platformPrefs.signaturePatterns.join("; ")}`);
+  }
+
+  lines.push("---");
+
+  return lines.join("\n");
+}
+
 interface TrackingContext {
   userId: string;
   episodeId: string | null;
@@ -96,7 +169,7 @@ export async function generateContent(
     .map((s) => `[${s.type}] ${s.content}${s.context ? ` (Context: ${s.context})` : ""}`)
     .join("\n\n");
 
-  let userPrompt = `Episode: "${episodeTitle}"
+  const userPrompt = `Episode: "${episodeTitle}"
 
 Summary: ${analysis.summary}
 
@@ -108,14 +181,15 @@ ${segmentsText}
 Full transcript excerpt (first 3000 chars for voice matching):
 ${transcription.slice(0, 3000)}`;
 
-  if (styleProfile) {
-    userPrompt += `\n\nApply these style preferences: ${JSON.stringify(styleProfile)}`;
-  }
+  // Inject style rules into system prompt for stronger adherence
+  const systemPrompt = styleProfile
+    ? GENERATION_SYSTEM_PROMPT + buildStyleBlock(styleProfile)
+    : GENERATION_SYSTEM_PROMPT;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      { role: "system", content: GENERATION_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     response_format: { type: "json_object" },

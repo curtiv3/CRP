@@ -19,6 +19,8 @@ export function AppShell({ user, children }: AppShellProps) {
     { href: "/dashboard", label: "Episodes" },
     { href: "/dashboard/episodes/new", label: "Upload" },
     { href: "/dashboard/style", label: "Style" },
+    { href: "/dashboard/billing", label: "Billing" },
+    { href: "/dashboard/settings", label: "Settings" },
   ];
 
   return (
