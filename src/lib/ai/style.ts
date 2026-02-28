@@ -162,42 +162,44 @@ export async function updateStyleProfile(
     { userId, episodeId: episodeId ?? null },
   );
 
+  const aiVocabulary = {
+    preferences: styleData.vocabularyPreferences,
+    avoidances: styleData.vocabularyAvoidances,
+    emojiUsage: styleData.emojiUsage,
+    hashtagUsage: styleData.hashtagUsage,
+  };
+  const aiPlatformPrefs = {
+    formalityScore: styleData.formalityScore,
+    averageSentenceLength: styleData.averageSentenceLength,
+    signaturePatterns: styleData.signaturePatterns,
+    platformDifferences: styleData.platformDifferences,
+  };
+
+  // Check for existing manual overrides — keep user-configured fields
+  const existing = await prisma.styleProfile.findUnique({
+    where: { userId },
+  });
+
+  const overrides = (existing?.manualOverrides as Record<string, boolean>) ?? {};
+
+  const updateData = {
+    ...(overrides.tone ? {} : { tone: styleData.tone }),
+    ...(overrides.vocabulary ? {} : { vocabulary: aiVocabulary }),
+    ...(overrides.hookPatterns ? {} : { hookPatterns: styleData.commonHooks }),
+    ...(overrides.platformPreferences ? {} : { platformPreferences: aiPlatformPrefs }),
+    sampleCount: completedCount,
+  };
+
   await prisma.styleProfile.upsert({
     where: { userId },
     create: {
       userId,
       tone: styleData.tone,
-      vocabulary: {
-        preferences: styleData.vocabularyPreferences,
-        avoidances: styleData.vocabularyAvoidances,
-        emojiUsage: styleData.emojiUsage,
-        hashtagUsage: styleData.hashtagUsage,
-      },
+      vocabulary: aiVocabulary,
       hookPatterns: styleData.commonHooks,
-      platformPreferences: {
-        formalityScore: styleData.formalityScore,
-        averageSentenceLength: styleData.averageSentenceLength,
-        signaturePatterns: styleData.signaturePatterns,
-        platformDifferences: styleData.platformDifferences,
-      },
+      platformPreferences: aiPlatformPrefs,
       sampleCount: completedCount,
     },
-    update: {
-      tone: styleData.tone,
-      vocabulary: {
-        preferences: styleData.vocabularyPreferences,
-        avoidances: styleData.vocabularyAvoidances,
-        emojiUsage: styleData.emojiUsage,
-        hashtagUsage: styleData.hashtagUsage,
-      },
-      hookPatterns: styleData.commonHooks,
-      platformPreferences: {
-        formalityScore: styleData.formalityScore,
-        averageSentenceLength: styleData.averageSentenceLength,
-        signaturePatterns: styleData.signaturePatterns,
-        platformDifferences: styleData.platformDifferences,
-      },
-      sampleCount: completedCount,
-    },
+    update: updateData,
   });
 }

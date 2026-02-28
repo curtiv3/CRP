@@ -5,6 +5,7 @@ import { requireUserContext } from "@/lib/auth-context";
 import { EpisodeStatus } from "@/components/episodes/episode-status";
 import { ContentDisplay } from "@/components/content/content-display";
 import { DownloadButton } from "@/components/content/download-button";
+import { RetryButton } from "@/components/episodes/retry-button";
 
 export function generateMetadata() {
   // Static title to avoid leaking episode titles without auth
@@ -99,12 +100,22 @@ export default async function EpisodeDetailPage({
 
       {episode.status === "FAILED" && (
         <div className="rounded-lg border border-danger/20 bg-bg-surface p-4 mb-6">
-          <p className="text-sm font-medium text-danger">Processing failed</p>
-          {episode.errorMessage && (
-            <p className="mt-1 text-xs text-text-secondary">
-              {episode.errorMessage}
-            </p>
-          )}
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm font-medium text-danger">Processing failed</p>
+              {episode.errorMessage && (
+                <p className="mt-1 text-xs text-text-secondary">
+                  {episode.errorMessage}
+                </p>
+              )}
+              {episode.sourceUrl && (
+                <p className="mt-1 text-xs text-text-muted truncate max-w-md">
+                  Source: {episode.sourceUrl}
+                </p>
+              )}
+            </div>
+            <RetryButton episodeId={episode.id} />
+          </div>
         </div>
       )}
 

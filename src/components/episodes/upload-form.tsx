@@ -17,9 +17,12 @@ const ACCEPTED_TYPES = [
   "audio/x-m4a",
   "audio/mp4",
   "video/mp4",
+  "audio/flac",
+  "audio/ogg",
+  "audio/webm",
 ];
 
-const ACCEPTED_EXTENSIONS = ".mp3,.wav,.m4a,.mp4";
+const ACCEPTED_EXTENSIONS = ".mp3,.wav,.m4a,.mp4,.flac,.ogg,.oga,.webm";
 
 export function UploadForm() {
   const router = useRouter();
@@ -40,7 +43,7 @@ export function UploadForm() {
       setState({
         step: "error",
         progress: 0,
-        error: "Unsupported file type. Accepted: .mp3, .wav, .m4a, .mp4",
+        error: "Unsupported file type. Accepted: .mp3, .wav, .m4a, .mp4, .flac, .ogg, .webm",
       });
       return;
     }
@@ -247,7 +250,7 @@ export function UploadForm() {
                 Drop your file here, or click to browse
               </p>
               <p className="mt-1 text-xs text-text-secondary">
-                MP3, WAV, M4A, or MP4 — up to 200MB
+                MP3, WAV, M4A, MP4, FLAC, OGG, or WebM — up to 500MB
               </p>
             </div>
           )}

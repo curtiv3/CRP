@@ -68,6 +68,13 @@ export async function PUT(request: Request) {
       where: { userId: context.userId },
     });
 
+    // Track which fields the user is manually setting
+    const newOverrides: Record<string, boolean> = {};
+    if (data.tone !== undefined) newOverrides.tone = true;
+    if (data.vocabulary !== undefined) newOverrides.vocabulary = true;
+    if (data.hookPatterns !== undefined) newOverrides.hookPatterns = true;
+    if (data.platformPreferences !== undefined) newOverrides.platformPreferences = true;
+
     if (existing) {
       // Merge vocabulary and platformPreferences with existing values
       const mergedVocabulary = data.vocabulary
@@ -78,6 +85,9 @@ export async function PUT(request: Request) {
         ? { ...(existing.platformPreferences as Record<string, unknown>), ...data.platformPreferences }
         : (existing.platformPreferences as Record<string, unknown>);
 
+      const existingOverrides = (existing.manualOverrides as Record<string, boolean>) ?? {};
+      const mergedOverrides = { ...existingOverrides, ...newOverrides };
+
       const updated = await prisma.styleProfile.update({
         where: { userId: context.userId },
         data: {
@@ -85,6 +95,7 @@ export async function PUT(request: Request) {
           vocabulary: mergedVocabulary as Prisma.InputJsonValue,
           ...(data.hookPatterns !== undefined && { hookPatterns: data.hookPatterns as Prisma.InputJsonValue }),
           platformPreferences: mergedPlatformPrefs as Prisma.InputJsonValue,
+          manualOverrides: mergedOverrides as Prisma.InputJsonValue,
         },
       });
 
@@ -99,6 +110,7 @@ export async function PUT(request: Request) {
         vocabulary: (data.vocabulary ?? {}) as Prisma.InputJsonValue,
         hookPatterns: (data.hookPatterns ?? []) as Prisma.InputJsonValue,
         platformPreferences: (data.platformPreferences ?? {}) as Prisma.InputJsonValue,
+        manualOverrides: newOverrides as Prisma.InputJsonValue,
         sampleCount: 0,
       },
     });

@@ -40,5 +40,6 @@ export const config = {
     "/api/style-profile/:path*",
     "/api/usage/:path*",
     "/api/billing/:path*",
+    "/api/user/:path*",
   ],
 };

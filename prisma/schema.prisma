@@ -90,6 +90,10 @@ model StyleProfile {
   hookPatterns        Json     @default("[]")
   platformPreferences Json     @default("{}")
   sampleCount         Int      @default(0)
+  /// Tracks which fields the user manually edited via the Style page.
+  /// Auto-learning will not overwrite fields listed here.
+  /// Example: { "tone": true, "vocabulary": true }
+  manualOverrides     Json     @default("{}")
 
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   updatedAt           DateTime @updatedAt

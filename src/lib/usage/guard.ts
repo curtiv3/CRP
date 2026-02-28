@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getLimitCentsForTier } from "@/lib/usage/tiers";
 
@@ -26,15 +27,31 @@ export async function checkBudget(userId: string): Promise<BudgetStatus> {
   });
 
   if (!budget) {
-    // Auto-create budget row so it exists for subsequent trackUsage calls
-    budget = await prisma.usageBudget.create({
-      data: {
-        userId,
-        monthlyLimitCents: limitCents,
-        currentMonthUsageCents: 0,
-        lastResetAt: new Date(),
-      },
-    });
+    // Auto-create budget row so it exists for subsequent trackUsage calls.
+    // Two concurrent requests may both reach this branch — catch P2002
+    // (unique constraint) and fall back to a read if another caller won.
+    try {
+      budget = await prisma.usageBudget.create({
+        data: {
+          userId,
+          monthlyLimitCents: limitCents,
+          currentMonthUsageCents: 0,
+          lastResetAt: new Date(),
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        budget = await prisma.usageBudget.findUnique({ where: { userId } });
+        if (!budget) {
+          throw new Error("UsageBudget row missing after P2002 conflict");
+        }
+      } else {
+        throw error;
+      }
+    }
   }
 
   // Auto-reset: if lastResetAt is not in the current calendar month, zero out

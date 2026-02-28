@@ -19,6 +19,18 @@ export async function GET() {
 
     const budget = await checkBudget(context.userId);
 
+    // Count episodes created this calendar month (for Free tier display)
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const episodesThisMonth = await prisma.episode.count({
+      where: {
+        userId: context.userId,
+        createdAt: { gte: startOfMonth },
+      },
+    });
+
     // Omit raw token counts and costs — expose only budget summary
     const records = await prisma.usageRecord.findMany({
       where: { userId: context.userId },
@@ -34,6 +46,8 @@ export async function GET() {
     });
 
     return NextResponse.json({
+      tier: context.user.subscriptionTier,
+      episodesThisMonth,
       usedCents: budget.usedCents,
       limitCents: budget.limitCents,
       remainingCents: budget.remainingCents,

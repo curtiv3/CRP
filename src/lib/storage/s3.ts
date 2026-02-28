@@ -29,6 +29,9 @@ const ALLOWED_TYPES: Record<string, string> = {
   "audio/x-m4a": "m4a",
   "audio/mp4": "m4a",
   "video/mp4": "mp4",
+  "audio/flac": "flac",
+  "audio/ogg": "ogg",
+  "audio/webm": "webm",
 };
 
 export function isAllowedFileType(contentType: string): boolean {
