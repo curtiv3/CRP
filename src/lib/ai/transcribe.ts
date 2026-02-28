@@ -20,6 +20,21 @@ interface TrackingContext {
   episodeId: string | null;
 }
 
+/**
+ * Sanitize a filename so Whisper doesn't reject it due to special
+ * characters (parentheses, spaces, unicode). Whisper uses the
+ * filename for format detection, so the extension must be preserved.
+ */
+function sanitizeFileName(rawName: string): string {
+  const ext = rawName.split(".").pop()?.toLowerCase() || "mp3";
+  const baseName = rawName.replace(/\.[^.]+$/, "");
+  const sanitized = baseName
+    .replace(/[^a-zA-Z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${sanitized || "audio"}.${ext}`;
+}
+
 export async function transcribeFromFileKey(
   fileKey: string,
   tracking?: TrackingContext,
@@ -32,7 +47,8 @@ export async function transcribeFromFileKey(
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const fileName = fileKey.split("/").pop() ?? "audio.mp3";
+  const rawName = fileKey.split("/").pop() ?? "audio.mp3";
+  const fileName = sanitizeFileName(rawName);
 
   const file = new File([arrayBuffer], fileName, {
     type: getMimeType(fileName),
@@ -123,8 +139,14 @@ export async function transcribeFromUrl(
   await validateResolvedUrl(url);
 
   const arrayBuffer = await fetchWithSizeLimit(url, MAX_DOWNLOAD_SIZE);
-  const file = new File([arrayBuffer], "audio.mp3", {
-    type: "audio/mpeg",
+
+  // Derive a filename from the URL path; sanitize to avoid Whisper rejections
+  const urlPath = new URL(url).pathname;
+  const rawName = urlPath.split("/").pop() || "audio.mp3";
+  const fileName = sanitizeFileName(rawName);
+
+  const file = new File([arrayBuffer], fileName, {
+    type: getMimeType(fileName),
   });
 
   const transcription = await openai.audio.transcriptions.create({
@@ -156,6 +178,12 @@ function getMimeType(fileName: string): string {
     wav: "audio/wav",
     m4a: "audio/mp4",
     mp4: "video/mp4",
+    flac: "audio/flac",
+    ogg: "audio/ogg",
+    oga: "audio/ogg",
+    webm: "audio/webm",
+    mpeg: "audio/mpeg",
+    mpga: "audio/mpeg",
   };
   return mimeTypes[ext ?? ""] ?? "audio/mpeg";
 }
